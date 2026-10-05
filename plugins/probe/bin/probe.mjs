@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const PROBE_VERSION = 1
+const PROBE_VERSION = 2
 const here = dirname(fileURLToPath(import.meta.url))
 const git = (...args) => {
   try { return execFileSync('git', ['-C', here, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim() }
