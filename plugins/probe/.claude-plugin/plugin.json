@@ -1,0 +1,6 @@
+{
+  "name": "probe",
+  "description": "Reports how a cloud session sees this repository: where it is cloned, which skills load, whether its scripts run.",
+  "author": { "name": "AgilityIO" },
+  "repository": "https://github.com/agilityio-us/agility-agent-plugins"
+}
