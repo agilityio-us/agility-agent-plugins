@@ -17,10 +17,17 @@ import { authorRefusal, noAuthor, ownPaths, readRunJson, runDirectory, runFile }
 import { attemptDir, spend } from './slice.mjs';
 
 const GROUP_LIMIT = 150;
-const DISPOSITIONS = ['fixed', 'refuted', 'handed-off'];
+const DISPOSITIONS = ['fixed', 'refuted', 'widens', 'handed-off'];
+// What becomes of a finding that asks for more than the design's scenarios.
+const WIDENS = "widens the design's scenarios: a question for a person, never a stricter bar";
 // The sources of the findings the engine raised itself, which no refutation answers: convergence's,
 // the locks' and the gaps' among them, and an unmet verdict. Each is fixed or handed off.
 export const ENGINE_RAISED = ['convergence', 'verdict'];
+
+// The bar every judge of the change holds it to, and only it: the design's scenarios. A slice's
+// outcome, the plan's wording and every finding only point at them.
+export const BAR =
+  "The design's scenarios are the bar, their given, when and then: a slice's outcome, the plan's wording and every finding only point at them. A case no scenario describes (an order, a race, an input or a guarantee none of them gives) is never a reason to fail or to fix: it is a finding, and a person decides it.";
 
 // The one form of findings, wherever the session writes them: a list, possibly empty.
 export const FINDINGS_FORM = '[ { "file": "<path>", "line": <number>, "claim": "<what is wrong and why>" } ]';
@@ -115,7 +122,8 @@ export function groupDiff(files, limit = GROUP_LIMIT) {
 }
 
 // The one form of dispositions, `allowed` those the review takes.
-const dispositionsForm = (allowed) => `[ { "finding": <its number, from 1>, "disposition": ${allowed.map((d) => `"${d}"`).join(' | ')}, "evidence": <for a refutation, as below> } ]`;
+const dispositionsForm = (allowed) =>
+  `[ { "finding": <its number, from 1>, "disposition": ${allowed.map((d) => `"${d}"`).join(' | ')}, "evidence": <for a refutation, as below>${allowed.includes('fixed') ? ', "criterion": <for a fix, the key of the criterion whose scenario it serves>' : ''} } ]`;
 
 // The tests a refutation may cite, and the proof run that passed them: in a slice, its green's; at a
 // gate, every landed slice's.
@@ -136,6 +144,8 @@ export function dispositionsBrief(run, at, allowed) {
     `HEAD holds, { "file": "<path>", "line": <number>, "why": "..." }, or a test ${by} passed, by`,
     `its full name, { "test": "<name>", "why": "..." }${tests.length ? `, one of ${tests.map((t) => `"${t}"`).join(', ')}` : ', of which there are none yet'}.`,
     'A refutation on any other evidence is handed off.',
+    BAR,
+    `A finding that asks for more than the scenarios is "widens": the engine hands it off, as a question for a person.${allowed.includes('fixed') ? ' A fix serves a scenario, never more: it names the criterion whose scenario it serves.' : ''}`,
   ];
 }
 
@@ -156,8 +166,9 @@ function unfounded(evidence, { lines, tests, by }) {
 }
 
 // Settles recorded dispositions against the findings they answer, `found` what the engine finds for
-// `unfounded`. A refutation of a finding the engine raised itself, or on evidence that does not stand,
-// becomes a hand-off, noting why; anything left without a disposition is reported open.
+// `unfounded`. A finding that widens the design, a refutation of a finding the engine raised itself, or
+// one on evidence that does not stand, becomes a hand-off, noting why; anything left without a
+// disposition is reported open.
 export function settleDispositions(findings, recorded, found) {
   const settled = [];
   const open = [];
@@ -169,8 +180,8 @@ export function settleDispositions(findings, recorded, found) {
     }
     const own = d.disposition === 'refuted' && ENGINE_RAISED.includes(finding.source);
     const why = d.disposition === 'refuted' && !own ? unfounded(d.evidence, found) : null;
-    const note = own ? 'refuted, but the engine raised it itself, so handed off' : why ? `refuted on evidence the engine cannot find (${why}), so handed off` : undefined;
-    settled.push({ finding: i + 1, disposition: note ? 'handed-off' : d.disposition, evidence: d.evidence, note });
+    const note = d.disposition === 'widens' ? WIDENS : own ? 'refuted, but the engine raised it itself, so handed off' : why ? `refuted on evidence the engine cannot find (${why}), so handed off` : undefined;
+    settled.push({ finding: i + 1, disposition: note ? 'handed-off' : d.disposition, evidence: d.evidence, ...(d.disposition === 'fixed' ? { criterion: d.criterion } : {}), note });
   });
   return { settled, open };
 }
@@ -180,11 +191,13 @@ const lineCount = (text) => (text === '' ? 0 : text.split('\n').length - (text.e
 // The one accept of dispositions, a slice's and both gates': every one of `findings`, the review's as
 // the run state keeps them (findings.json in `at` is the session's copy), settled by the
 // dispositions.json beside it, none fixed where `unfixable` says why none may be, and none naming a
-// finding there is not. The settled list is written beside them, and each finding gets a calibration
+// finding there is not. Each fix of a finding the engine did not raise names the criterion of
+// `criteria`, the design's keys, whose scenario it serves, so no fix stands on a finding that asks for
+// more than the scenarios. The settled list is written beside them, and each finding gets a calibration
 // line with `raised(finding)`, the fields that name who raised it. Returns { settled, handedOff, fixed,
 // log }, the run's handed-off and fixed findings with this review's added, each with its cycle and its
 // source, and the lines, or { refused }.
-export function acceptDispositions(ctx, run, at, findings, { unfixable, raised }) {
+export function acceptDispositions(ctx, run, at, findings, { unfixable, raised, criteria = [] }) {
   const file = `${runDirectory(run)}/${at}/dispositions.json`;
   const recorded = readRunJson(ctx.root, run, `${at}/dispositions.json`);
   if (!Array.isArray(recorded)) return { refused: [`${file} must be a list of dispositions, ${dispositionsForm(DISPOSITIONS)}`] };
@@ -197,6 +210,15 @@ export function acceptDispositions(ctx, run, at, findings, { unfixable, raised }
   const { settled, open } = settleDispositions(findings, recorded, { lines, ...proven(run) });
   if (open.length) return { refused: [`findings ${open.join(', ')} have no disposition`] };
   if (unfixable && settled.some((s) => s.disposition === 'fixed')) return { refused: [unfixable] };
+  const unserved = settled.filter((s) => s.disposition === 'fixed' && !ENGINE_RAISED.includes(findings[s.finding - 1].source) && !criteria.includes(s.criterion));
+  if (unserved.length) {
+    return {
+      refused: [
+        `findings ${unserved.map((s) => s.finding).join(', ')} are marked fixed but name no criterion whose scenario the fix serves, "criterion": one of ${criteria.map((k) => `"${k}"`).join(', ')}`,
+        `a fix realizes the design's scenarios, never more: a finding that asks for more than they describe is "widens", which the engine hands off as a question for a person`,
+      ],
+    };
+  }
   fs.writeFileSync(runFile(ctx.root, run, `${at}/settled.json`), `${JSON.stringify(settled, null, 2)}\n`);
   const log = settled.map((s) => ({ finding: s.finding, ...raised(findings[s.finding - 1]), disposition: s.disposition }));
   const kept = (disposition) =>
@@ -282,6 +304,8 @@ export const REVIEW_STEPS = {
         `"${slice.id}" against criteria ${slice.criteria.join(', ')} in the design as the run admitted it (git show ${run.startCommit}:${run.design})${exhibit}`,
         `It reads the engine's replay evidence (${at}/replay.json, whose findings join the slice's), the group findings`,
         `(${at}/group-*.findings.json), the diff (${run.slice.base}..${run.slice.greenCommit}) and the slice's scope, and never runs the replays itself.`,
+        BAR,
+        "It fails the slice only for a scenario of its criteria the change does not meet, or a defect the change brings into what it touches; for anything else it passes, with the finding.",
         ...(carried.length
           ? [
               "What the slice's failed reviews found is carried into this one: it joins the slice's findings, so the Contract",

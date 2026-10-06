@@ -229,10 +229,17 @@ The key is never printed or logged.
 ## Findings
 
 Every review raises findings in one form, `[ { file, line, claim } ]`. Every finding gets a
-disposition: **fixed**, **refuted** or **handed off**. A refutation stands only on evidence the engine
-can find, a line HEAD holds or a test a proof run passed; any other is handed off, and so is every
-refutation of a finding the engine raised itself. What is handed off or fixed goes into the
+disposition: **fixed**, **refuted**, **widens** or **handed off**. A refutation stands only on evidence
+the engine can find, a line HEAD holds or a test a proof run passed; any other is handed off, and so is
+every refutation of a finding the engine raised itself. What is handed off or fixed goes into the
 description, and every finding into the calibration log.
+
+The design's scenarios are the bar, and every judge holds the change to them alone: a slice's outcome,
+the plan's wording and every finding only point at them. A finding that asks for a case no scenario
+describes widens the design: it is handed off as a question for a person, never fixed into a stricter
+bar. So a gate's fix names the criterion whose scenario it serves, and the engine refuses one that
+names none; a Contract Reviewer fails a slice only for a scenario it does not meet or a defect it
+brings.
 
 ## Gates
 

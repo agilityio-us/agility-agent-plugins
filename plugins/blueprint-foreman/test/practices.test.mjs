@@ -144,7 +144,7 @@ test("with every practice off, a later slice may not touch or break what landed,
   const farewell = { ...fitted(FAREWELL, OFF), dependsOn: [] };
   const plan = (slices) => {
     f.write(`docs/prs/${KEY}/foreman/plan.json`, JSON.stringify({ slices }));
-    f.write(`docs/prs/${KEY}/foreman/gates/final-c1-r1/dispositions.json`, JSON.stringify([{ finding: 1, disposition: 'fixed' }]));
+    f.write(`docs/prs/${KEY}/foreman/gates/final-c1-r1/dispositions.json`, JSON.stringify([{ finding: 1, disposition: 'fixed', criterion: 'greets-by-name' }]));
     return f.engine('record', KEY, 'dispositions');
   };
   refused(await plan([landed, farewell, { ...farewell, id: 'wave' }]), /the slices practice is off, so the plan adds one slice to those that landed, not 2: "say-farewell", "wave"/);

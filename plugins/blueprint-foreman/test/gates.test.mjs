@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { askAdversary } from '../lib/adversary.mjs';
+import { BAR } from '../lib/review.mjs';
 import { run } from '../lib/wake.mjs';
 import { MODEL_TABLE, createModels } from '../lib/models.mjs';
 import { KEY, BRANCH, EXTRACTOR, TEST_FILE, DESIGN, SLICE, FILLED, SCAFFOLDED, FAREWELL, MUTANTS, GREEN_CODE, fixture, ok, refused, walk, restore, commitRun, REVIEW, exhibit, GREETING, NOTES, allMet, settled, answer, DESIGN_FILE, GREET_ROW, proposes } from './fixture.mjs';
@@ -157,7 +158,7 @@ test("a final-gate finding is fixed by a new slice, which lands into the gate's 
   f.write(`${FINAL}/contract.json`, JSON.stringify(allMet(f, f.runState())));
   await ok(f, 'record', KEY, 'gate', 'agent-reviewer');
   commitRun(f);
-  f.write(`${FINAL}/dispositions.json`, JSON.stringify([{ finding: 1, disposition: 'fixed' }]));
+  f.write(`${FINAL}/dispositions.json`, JSON.stringify([{ finding: 1, disposition: 'fixed', criterion: 'greets-by-name' }]));
   refused(await f.engine('record', KEY, 'dispositions'), /a fixed final-gate finding needs a new slice in plan\.json, and none is left to work/);
   f.write(`docs/prs/${KEY}/foreman/plan.json`, JSON.stringify({ slices: [SLICE, FAREWELL] }));
   assert.match(await ok(f, 'record', KEY, 'dispositions'), /step: red/);
@@ -399,7 +400,7 @@ test('a fixed plan finding is fixed in the plan, sends the gate to its confirmin
   f.write(`${first}/findings.json`, JSON.stringify([{ file: 'plan.json', line: 1, claim: 'no edge case' }]));
   assert.match((await f.engine('record', KEY, 'gate')).text, /step: gate-dispositions[\s\S]*hand off a finding against the design itself/);
   commitRun(f);
-  f.write(`${first}/dispositions.json`, JSON.stringify([{ finding: 1, disposition: 'fixed' }]));
+  f.write(`${first}/dispositions.json`, JSON.stringify([{ finding: 1, disposition: 'fixed', criterion: 'greets-by-name' }]));
   // Marked fixed with the plan as the gate attacked it, nothing was fixed, whatever order its keys take.
   refused(await f.engine('record', KEY, 'dispositions'), /a plan finding marked fixed is fixed in docs\/prs\/PROJ-1\/foreman\/plan\.json, and it is the plan the gate attacked, unchanged/);
   f.write(`docs/prs/${KEY}/foreman/plan.json`, JSON.stringify({ slices: [Object.fromEntries(Object.entries(SLICE).reverse())] }));
@@ -410,12 +411,12 @@ test('a fixed plan finding is fixed in the plan, sends the gate to its confirmin
   assert.equal(f.runState().plan.slices[0].outcome, AMENDED.slices[0].outcome);
   const second = `docs/prs/${KEY}/foreman/gates/plan-c1-r2`;
   // The confirming round's package holds what round 1 found and what became of each.
-  const previous = [{ file: 'plan.json', line: 1, claim: 'no edge case', source: 'adversary', disposition: 'fixed' }];
+  const previous = [{ file: 'plan.json', line: 1, claim: 'no edge case', source: 'adversary', disposition: 'fixed', criterion: 'greets-by-name' }];
   assert.ok(f.read(`${second}/package.md`).endsWith(`## Round 1's findings and their dispositions\n\`\`\`json\n${JSON.stringify(previous, null, 2)}\n\`\`\`\n`), f.read(`${second}/package.md`));
   f.write(`${second}/findings.json`, JSON.stringify([{ file: 'plan.json', line: 1, claim: 'still no edge case' }]));
   await f.engine('record', KEY, 'gate');
   commitRun(f);
-  f.write(`${second}/dispositions.json`, JSON.stringify([{ finding: 1, disposition: 'fixed' }]));
+  f.write(`${second}/dispositions.json`, JSON.stringify([{ finding: 1, disposition: 'fixed', criterion: 'greets-by-name' }]));
   refused(await f.engine('record', KEY, 'dispositions'), /the confirming round fixes nothing/);
   f.write(`${second}/dispositions.json`, JSON.stringify([{ finding: 1, disposition: 'handed-off' }]));
   assert.match((await f.engine('record', KEY, 'dispositions')).text, /step: red/);
@@ -426,13 +427,47 @@ test('a fixed plan finding is fixed in the plan, sends the gate to its confirmin
   assert.match(f.read(`docs/prs/${KEY}/pull-request.md`), /## Gates\n\n- plan gate, cycle 1, round 1: its Adversary was a Claude subagent, claude-opus-5-5 \(no OpenRouter key in the environment\)\n {2}- fixed #1, plan\.json:1: no edge case\n- plan gate, cycle 1, round 2: [^\n]+\n- final gate, cycle 1, round 1: [^\n]+\n\n## Handed-off findings\n\n- gates\/plan-c1-r2 #1, plan\.json:1: still no edge case\n/);
 });
 
+test("a gate finding that asks for more than the design's scenarios is no fix: it is handed off as a question for a person, and the slice's judge holds to the scenarios", async () => {
+  const f = fixture();
+  await walk(f, 'gate');
+  const first = `docs/prs/${KEY}/foreman/gates/plan-c1-r1`;
+  const PLAN = `docs/prs/${KEY}/foreman/plan.json`;
+  const attacked = f.read(PLAN);
+  // The scenario greets one name; the finding asks for an order between two calls it never describes.
+  const claim = 'greet is called from two sources, so either call may arrive first; the plan never says which wins';
+  f.write(`${first}/findings.json`, JSON.stringify([{ file: 'src/greet.mjs', line: 1, claim }]));
+  const brief = await ok(f, 'record', KEY, 'gate');
+  assert.ok(brief.includes(BAR), brief);
+  assert.ok(brief.includes('"widens": the engine hands it off, as a question for a person. A fix serves a scenario, never more'), brief);
+  // The fix the dry run made: the slice's outcome widened to the finding's case, marked fixed.
+  f.write(PLAN, JSON.stringify({ slices: [{ ...SLICE, outcome: `${SLICE.outcome}, whichever call arrives first` }] }));
+  for (const fixed of [{ finding: 1, disposition: 'fixed' }, { finding: 1, disposition: 'fixed', criterion: 'calls-arrive-in-either-order' }]) {
+    f.write(`${first}/dispositions.json`, JSON.stringify([fixed]));
+    const text = refused(await f.engine('record', KEY, 'dispositions'), /findings 1 are marked fixed but name no criterion whose scenario the fix serves, "criterion": one of "greets-by-name"/);
+    assert.ok(text.includes('"widens", which the engine hands off as a question for a person'), text);
+  }
+  f.write(PLAN, attacked);
+  f.write(`${first}/dispositions.json`, JSON.stringify([{ finding: 1, disposition: 'widens' }]));
+  assert.match(await ok(f, 'record', KEY, 'dispositions'), /step: red/, 'nothing was fixed, so the gate is through');
+  commitRun(f);
+  const question = "widens the design's scenarios: a question for a person, never a stricter bar";
+  assert.deepEqual(f.runState().handedOff, [{ at: 'gates/plan-c1-r1', cycle: 1, finding: 1, file: 'src/greet.mjs', line: 1, claim, source: 'adversary', note: question }]);
+  assert.equal(f.runState().plan.slices[0].outcome, SLICE.outcome, 'the bar stays the design');
+  // The slice's Contract Reviewer judges against the scenarios, and passes with a finding for anything else.
+  const contract = await walk(f, 'contract-review');
+  assert.ok(contract.includes(`${BAR}\nIt fails the slice only for a scenario of its criteria the change does not meet`), contract);
+  await settled(f);
+  const description = f.read(`docs/prs/${KEY}/pull-request.md`);
+  assert.ok(description.includes(`## Handed-off findings\n\n- gates/plan-c1-r1 #1, src/greet.mjs:1: ${claim} (${question})\n`), description);
+});
+
 test('a record refused after its dispositions are settled logs nothing, so the one accepted logs each finding once', async () => {
   const f = fixture();
   await walk(f, 'gate');
   const at = `docs/prs/${KEY}/foreman/gates/plan-c1-r1`;
   f.write(`${at}/findings.json`, JSON.stringify([{ file: 'plan.json', line: 1, claim: 'no edge case' }]));
   await ok(f, 'record', KEY, 'gate');
-  f.write(`${at}/dispositions.json`, JSON.stringify([{ finding: 1, disposition: 'fixed' }]));
+  f.write(`${at}/dispositions.json`, JSON.stringify([{ finding: 1, disposition: 'fixed', criterion: 'greets-by-name' }]));
   // A fix that empties the plan is refused by the plan's own check, which comes after the settling.
   const plan = f.read(`docs/prs/${KEY}/foreman/plan.json`);
   f.write(`docs/prs/${KEY}/foreman/plan.json`, JSON.stringify({ slices: [] }));

@@ -17,7 +17,7 @@ import { adversaryRoute, askAdversary, routeName, ADVERSARY_PROMPT } from './adv
 import { ENGINE } from './config.mjs';
 import { criteria, criterionKeys, designAt } from './design.mjs';
 import { checkApproval, nextSlice, readPlan } from './plan.mjs';
-import { ENGINE_RAISED, FINDINGS_FORM, acceptDispositions, checkFindings, dispositionsBrief } from './review.mjs';
+import { BAR, ENGINE_RAISED, FINDINGS_FORM, acceptDispositions, checkFindings, dispositionsBrief } from './review.mjs';
 import { authorRefusal, noAuthor, openGate, ownPaths, readRunJson, runDirectory, runFile, same } from './run.mjs';
 
 // A round's directory; the final gate opened again after a merge has its own.
@@ -145,6 +145,7 @@ function finalBrief(ctx, run, pkg) {
     `${pkg}${run.practices.exhibits ? ", and each slice's exhibits against its promise in the plan there" : ''}. It gives a verdict on every criterion, by`,
     `its key: ${criterionKeys(designAt(ctx.git, run)).join(', ')}${handed.length ? '; and on every event model row the graph cannot show, by the name given here:' : '.'}`,
     ...rows,
+    BAR,
     `It writes ${runDirectory(run)}/${gateDir(run)}/contract.json, proposing findings only, and edits nothing else:`,
     `  ${CONTRACT_FORM}`,
     "An unmet verdict is a finding; the verdicts on the criteria go into the pull request's description.",
@@ -305,7 +306,7 @@ export const GATE_STEPS = {
       const own = run.gate.findings.some((f) => ENGINE_RAISED.includes(f.source));
       const carried = run.gate.findings.some((f) => f.carried);
       return [
-        ...dispositionsBrief(run, gateDir(run), fixing ? ['fixed', 'refuted', 'handed-off'] : ['refuted', 'handed-off']),
+        ...dispositionsBrief(run, gateDir(run), fixing ? ['fixed', 'refuted', 'widens', 'handed-off'] : ['refuted', 'widens', 'handed-off']),
         ...(own ? [`A finding the engine raised itself, its "source" ${ENGINE_RAISED.map((s) => `"${s}"`).join(' or ')}, is fixed or handed off: a refutation of it is handed off.`] : []),
         ...(carried ? ['A finding that names where it was "carried" from was left unsettled by a round a merge interrupted; settle it again.'] : []),
         fixing
@@ -316,6 +317,7 @@ export const GATE_STEPS = {
     record: (run) => `${ENGINE} record ${run.key} dispositions`,
     accept(run, ctx) {
       const done = acceptDispositions(ctx, run, gateDir(run), run.gate.findings, {
+        criteria: criterionKeys(designAt(ctx.git, run)),
         unfixable: run.gate.round === 2 ? 'the confirming round fixes nothing; refute with evidence or hand off' : null,
         raised: (f) => ({ gate: run.gate.name, cycle: run.gate.cycle, round: run.gate.round, ...raisedBy(run, ctx, f) }),
       });
@@ -333,9 +335,9 @@ export const GATE_STEPS = {
       const problems = checkApproval(plan, run, criterionKeys(designAt(ctx.git, run)));
       if (problems.length) return { refused: problems };
       // The confirming round's package carries what this round found and what became of each.
-      const previous = done.settled.map(({ finding, disposition, evidence, note }) => {
+      const previous = done.settled.map(({ finding, disposition, evidence, criterion, note }) => {
         const { file, line, claim, source } = run.gate.findings[finding - 1];
-        return { file, line, claim, source, disposition, ...(evidence === undefined ? {} : { evidence }), ...(note ? { note } : {}) };
+        return { file, line, claim, source, disposition, ...(evidence === undefined ? {} : { evidence }), ...(criterion === undefined ? {} : { criterion }), ...(note ? { note } : {}) };
       });
       const confirm = { ...run.gate, round: 2, fallback: undefined, findings: undefined, carried: undefined, previous };
       if (run.gate.name === 'final') {

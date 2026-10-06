@@ -75,7 +75,7 @@ Each term once. Roles are capitalized (Red, Green, Builder); steps and states ar
 | **land** | of a slice: its reviews passed, or with review off its replays, and its tests locked |
 | **final run** | the engine's own run of the code at HEAD before the final gate: convergence, the locks and gaps, every landed slice's tests, each suite's `all` |
 | **gate** | the plan gate and the final gate, each attacking a **package** the engine builds, in at most two **rounds** |
-| **finding** | a claim on a file and line; its **disposition** is fixed, refuted with evidence the engine can find, or handed off to the description |
+| **finding** | a claim on a file and line; its **disposition** is fixed (serving a scenario), refuted with evidence the engine can find, widens (asking for more than the scenarios, so a question for a person) or handed off to the description |
 | **verdict** | the Contract Reviewer's judgment, `met` or not with its evidence, on each scenario and each row convergence hands on |
 | **lessons** | what a run taught, in one commit touching only the lesson homes |
 | **`pr-notes.md`** | the session's part of the description: decisions, deferrals and, with lessons on, lessons |
