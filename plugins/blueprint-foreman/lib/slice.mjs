@@ -13,7 +13,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ENGINE, FOREMAN_CONFIG, EXHIBITS_VARIABLE, GAP_MARKER, isProtected } from './config.mjs';
+import { ENGINE, FOREMAN_CONFIG, EXHIBITS_VARIABLE, GAP_MARKER, containment, isProtected } from './config.mjs';
 import { convergeIn } from './convergence.mjs';
 import { quote, within } from './git.mjs';
 import { LOCK_RULE } from './locks.mjs';
@@ -32,7 +32,7 @@ function writeBrief(ctx, run, role, lines) {
   const name = `${run.slice.id}-${role}-${run.slice.attempt}.md`;
   const file = runFile(ctx.root, run, path.join('briefs', name));
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${[...lines, ...answersGiven(ctx.git, run)].join('\n')}\n`);
+  fs.writeFileSync(file, `${[...lines, ...answersGiven(ctx.git, run), containment(ctx.root)].join('\n')}\n`);
   return `${runDirectory(run)}/briefs/${name}`;
 }
 

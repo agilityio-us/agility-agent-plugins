@@ -6,12 +6,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
+import { PLUGIN_DIR, containment } from '../lib/config.mjs';
 import { createGit } from '../lib/git.mjs';
 import { checkApproval, checkPlan, nextSlice } from '../lib/plan.mjs';
 import { checkLock } from '../lib/locks.mjs';
 import { exhibitsIn } from '../lib/slice.mjs';
 import { practicesOf } from '../lib/payload.mjs';
-import { KEY, TEST_FILE, SLICE, SCAFFOLD, FILLED, SCAFFOLDED, FAREWELL_TEST, FAREWELL, FAREWELL_STUB, FAREWELL_CODE, MUTANTS, RED_STUB, GREEN_CODE, SUITES, fixture, ok, refused, walk, restore, exhibit, scratchDir, GREETING, answer, fire } from './fixture.mjs';
+import { KEY, TEST_FILE, SLICE, SCAFFOLD, FILLED, SCAFFOLDED, FAREWELL_TEST, FAREWELL, FAREWELL_STUB, FAREWELL_CODE, MUTANTS, RED_STUB, GREEN_CODE, SUITES, ACTS, fixture, ok, refused, walk, restore, exhibit, scratchDir, GREETING, answer, fire } from './fixture.mjs';
 
 test('the plan check refuses each gap, one field at a time, before any slice starts', () => {
   const keys = ['greets-by-name'];
@@ -409,4 +410,28 @@ test('a slice in a JUnit suite runs from its cwd with its env, and a module that
   await walk(f, 'group-review');
   assert.deepEqual(f.runState().slice.passing, ['greet.test.mjs greet names the person']);
   assert.equal(f.read(GREETING), "greet('Ada') returns: Hello, Ada\n", 'the proof run wrote the exhibit');
+});
+
+test('the skill, every step and every brief the engine writes keep the work inside the two clones', async () => {
+  const f = fixture({ scaffold: true });
+  const rule = containment(f.root);
+  assert.ok(rule.includes(f.root) && rule.includes(PLUGIN_DIR), rule);
+  // Every step a session reads, each dispatch among them, carries the rule.
+  const steps = [];
+  for (let records = 0; records < 40 && !(f.hasRun() && f.runState().step === 'settle'); records += 1) {
+    const run = f.hasRun() ? f.runState() : null;
+    const out = await ACTS[run?.step ?? 'wake'](f, run, { slices: [SCAFFOLDED] });
+    assert.equal(out.code, 0, out.text);
+    if (/· step: /.test(out.text)) steps.push(out.text);
+  }
+  assert.equal(f.runState().step, 'settle');
+  assert.ok(steps.filter((t) => t.includes('Dispatch a fresh')).length >= 5, 'the steps dispatch subagents');
+  for (const text of steps) assert.ok(text.includes(`For the session, and for every subagent it dispatches in its dispatch: ${rule}`), text);
+  // Every brief the engine wrote carries it too.
+  const dir = path.join(f.root, 'docs', 'prs', KEY, 'foreman', 'briefs');
+  const briefs = fs.readdirSync(dir);
+  assert.deepEqual(briefs.map((b) => b.replace(/^greet-by-name-|-1\.md$/g, '')).sort(), ['green', 'mutant', 'red']);
+  for (const b of briefs) assert.ok(fs.readFileSync(path.join(dir, b), 'utf8').trimEnd().endsWith(rule), b);
+  // And the skill states it for the session.
+  assert.match(fs.readFileSync(new URL('../skills/blueprint-foreman/SKILL.md', import.meta.url), 'utf8'), /Work stays inside those two clones: read and search nothing outside them, and run every command from\nthe repository's root\./);
 });

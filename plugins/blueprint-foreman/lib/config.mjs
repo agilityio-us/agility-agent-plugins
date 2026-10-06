@@ -14,6 +14,12 @@ import { isRelativePath, quote, within } from './git.mjs';
 // command it prints runs: so it names itself by where it is, never by a path in that repository.
 export const ENGINE_FILE = fileURLToPath(new URL('../engine.mjs', import.meta.url));
 export const ENGINE = `node ${quote(ENGINE_FILE)}`;
+// The plugin's own directory, the engine's.
+export const PLUGIN_DIR = path.dirname(ENGINE_FILE);
+
+// Where a session and every subagent it dispatches may work, `root` the item's repository clone: that
+// clone and this plugin, and nowhere else. Every step and every brief states it.
+export const containment = (root) => `Work stays inside two clones: the item's repository, ${root}, and this plugin, ${PLUGIN_DIR}. Read and search nothing outside them, and run every command from ${root}.`;
 
 export const BLUEPRINT_CONFIG = '.blueprint.config.json';
 // The harness's own settings, at the root of the repository it delivers into.

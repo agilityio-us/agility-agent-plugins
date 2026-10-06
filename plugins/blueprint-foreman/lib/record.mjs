@@ -7,7 +7,7 @@
 // way in.
 
 import { checkBounds, restoring } from './bounds.mjs';
-import { ENGINE } from './config.mjs';
+import { ENGINE, containment } from './config.mjs';
 import { criterionKeys, designAt, eventModel } from './design.mjs';
 import { GATE_STEPS } from './gates.mjs';
 import { heldLines, itemDirectory } from './locks.mjs';
@@ -53,8 +53,9 @@ const active = (run) => ![...AT_REST, 'rejected'].includes(run.step);
 export function describe(run, ctx) {
   const step = STEPS[run.step];
   const lines = [`blueprint-foreman ${run.key} · step: ${run.step} (${step.title})`, '', ...step.instruct(run, ctx)];
-  // Every answer given in the cycle stays with every step for the rest of it.
-  if (active(run)) lines.push(...answersGiven(ctx.git, run));
+  // Every answer given in the cycle stays with every step for the rest of it, and so does where the
+  // work may go.
+  if (active(run)) lines.push(...answersGiven(ctx.git, run), `For the session, and for every subagent it dispatches in its dispatch: ${containment(ctx.root)}`);
   const record = step.record(run);
   if (record) lines.push('', `When done, record it: ${record}`);
   if (active(run)) {
