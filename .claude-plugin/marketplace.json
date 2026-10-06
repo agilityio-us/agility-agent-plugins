@@ -3,6 +3,7 @@
   "owner": { "name": "AgilityIO" },
   "description": "AgilityIO's public plugins for coding agents.",
   "plugins": [
-    { "name": "probe", "source": "./plugins/probe" }
+    { "name": "probe", "source": "./plugins/probe" },
+    { "name": "blueprint-foreman", "source": "./plugins/blueprint-foreman" }
   ]
 }

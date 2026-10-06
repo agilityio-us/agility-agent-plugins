@@ -1,0 +1,6 @@
+{
+  "name": "blueprint-foreman",
+  "description": "The harness a cloud agent follows to deliver one designed work item: it dispatches a subagent for every role and holds their work to the committed design and scaffold.",
+  "author": { "name": "AgilityIO" },
+  "repository": "https://github.com/agilityio-us/agility-agent-plugins"
+}

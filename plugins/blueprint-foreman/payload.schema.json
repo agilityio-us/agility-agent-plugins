@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "blueprint-foreman fire",
+  "description": "The fire as Specification v1 gives it: one JSON object, the text a routine is fired with, which the session hands verbatim to the engine's `wake` on stdin. The engine validates every fire against this file with its own code. A fire whose key or branches it cannot read writes nothing; any other it refuses is signalled `failed` on the agent's branch.",
+  "type": "object",
+  "required": ["specification", "key", "branch", "agentBranch", "design", "signal"],
+  "additionalProperties": false,
+  "properties": {
+    "specification": {
+      "description": "The version of the specification the fire follows.",
+      "const": 1
+    },
+    "key": {
+      "description": "The work item's key: a capital letter, then capital letters or digits, a hyphen and digits, as `PROJ-1`.",
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]+-[0-9]+$"
+    },
+    "title": {
+      "description": "The work item's title, for people.",
+      "type": ["string", "null"]
+    },
+    "branch": {
+      "description": "Blueprint's branch for the item, B, as origin names it without `refs/heads/`. One or more segments joined by `/`, each of letters, digits, `.`, `_` and `-`, starting with a letter, a digit or `_`, ending with neither `.` nor `.lock`, with no `..` anywhere; not under `claude/`.",
+      "type": "string",
+      "pattern": "^(?!claude/)(?!.*\\.\\.)(?!.*\\.lock(?:/|$))[A-Za-z0-9_](?:[A-Za-z0-9._-]*[A-Za-z0-9_-])?(?:/[A-Za-z0-9_](?:[A-Za-z0-9._-]*[A-Za-z0-9_-])?)*$"
+    },
+    "agentBranch": {
+      "description": "The agent's branch, F: `claude/` and B's name. The run works only here, cutting it from B's tip where origin does not have it, else continuing it.",
+      "type": "string",
+      "pattern": "^claude/"
+    },
+    "pullRequest": {
+      "description": "The item's pull request, from B to the default branch, which Blueprint opened; for people.",
+      "type": ["string", "null"]
+    },
+    "design": {
+      "description": "Where the design is: `<docsRoot>/<KEY>/blueprint.md`, relative to the repository's root.",
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[^\\\\]*/blueprint\\.md$"
+    },
+    "signal": {
+      "description": "The git trailer key under which the agent signals its state on F.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$"
+    },
+    "answer": {
+      "description": "A person's reply to the run's last `needs-human`, or null.",
+      "type": ["string", "null"]
+    },
+    "options": {
+      "description": "The harness's own options for this agent, which Blueprint passes through untouched. A run takes them at admission and keeps them: a later fire's are ignored.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "practices": {
+          "description": "The practices the run holds, each true (on) or false (off). A practice not named is on. Turning one off never loosens what every run holds: admission, the scaffold's lock and gaps, convergence with the design, and the run's own record.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "slices": {
+              "description": "The run plans the work as slices, each realizing some of the design's scenarios, and the plan gate attacks the plan. Off: the plan holds one slice, which realizes every scenario, and no plan gate attacks it.",
+              "type": "boolean"
+            },
+            "red-green": {
+              "description": "Each slice's tests are written first and must fail on an assertion (red), then a separate subagent's code makes them pass (green). Off: one Builder per slice writes the code and its tests, and the tests must pass.",
+              "type": "boolean"
+            },
+            "mutant": {
+              "description": "After green, a fresh subagent that has not read the tests names one small edit to the code, and the slice's tests must fail on it. Off: no mutant.",
+              "type": "boolean"
+            },
+            "review": {
+              "description": "Before a slice lands, Reviewers review its diff in groups and a Contract Reviewer judges it against the design's scenarios. Off: no Reviewers and no Contract Reviewers; a slice lands once its replays pass, and the description says no scenario was reviewed.",
+              "type": "boolean"
+            },
+            "adversary": {
+              "description": "The Adversary, a model of another family, attacks the plan at the plan gate and the finished change at the final gate. Off: no Adversary and no plan gate; the final gate still holds the engine's own findings, and the Contract Reviewer's where review is on.",
+              "type": "boolean"
+            },
+            "exhibits": {
+              "description": "Each slice promises an exhibit its proof run writes, something a person who was not in the session can look at, and the description links them. Off: no promise and no Exhibits section.",
+              "type": "boolean"
+            },
+            "lessons": {
+              "description": "At settle, what the run taught lands in one commit in the repository's lesson homes. Off: no lessons commit.",
+              "type": "boolean"
+            }
+          }
+        },
+        "models": {
+          "description": "A model per role, over the harness's settings.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "broad": { "description": "Red, Green and the Builder on a broad slice.", "type": "string" },
+            "contained": { "description": "Red, Green and the Builder on a contained slice.", "type": "string" },
+            "reviewer": { "description": "The Mutant, the Reviewers and the Contract Reviewer.", "type": "string" },
+            "adversary-fallback": { "description": "The Claude subagent that stands in for the Adversary.", "type": "string" }
+          }
+        },
+        "adversary": {
+          "description": "The Adversary, over the harness's settings.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "model": { "description": "The model, an OpenRouter id.", "type": "string" },
+            "zeroDataRetention": { "description": "Whether its requests may reach only zero-data-retention endpoints; on unless false.", "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}
