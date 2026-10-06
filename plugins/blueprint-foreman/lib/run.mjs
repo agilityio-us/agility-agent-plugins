@@ -10,8 +10,6 @@ import { BLUEPRINT_CONFIG, CYCLE_TRAILER, DEFAULT_SIGNAL, FOREMAN_CONFIG, RUN_TR
 import { gitDirectory, quote } from './git.mjs';
 import { latestScaffold, scaffoldCommits } from './locks.mjs';
 
-export const KEY_PATTERN = /^[A-Z][A-Z0-9]+-\d+$/;
-
 // The run directory as the repository names it, beside the design of `run`, or of any { key, design },
 // and in the checkout.
 export const runDirectory = (run) => `${path.posix.dirname(run.design)}/foreman`;

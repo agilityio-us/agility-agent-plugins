@@ -26,7 +26,7 @@ const SCAFFOLD_WORD = 'blueprint[-_ ]?scaffold';
 // quote the trailer.
 export function scaffoldCommits(git, key, commit = 'HEAD') {
   const word = new RegExp(SCAFFOLD_WORD, 'i');
-  const names = new RegExp(`(^|[^A-Za-z0-9])${key}([^0-9]|$)`, 'i');
+  const names = new RegExp(`(^|[^A-Za-z0-9])${key}([^A-Za-z0-9]|$)`, 'i');
   const exact = [];
   const misspelt = [];
   for (const m of git.messagesMatching(SCAFFOLD_WORD, commit)) {

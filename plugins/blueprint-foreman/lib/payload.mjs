@@ -50,6 +50,9 @@ export function checkSchema(schema, at = '#') {
 
 export const SCHEMA = checkSchema(JSON.parse(fs.readFileSync(new URL('../payload.schema.json', import.meta.url), 'utf8')));
 
+// An item's key, as the schema takes it: what `record` reads as one.
+export const KEY_PATTERN = new RegExp(SCHEMA.properties.key.pattern, 'u');
+
 // The practices a fire may turn off, as the schema names them.
 export const PRACTICES = Object.keys(SCHEMA.properties.options.properties.practices.properties);
 

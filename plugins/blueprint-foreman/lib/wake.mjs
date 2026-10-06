@@ -27,11 +27,11 @@ import { reopenFinal } from './gates.mjs';
 import { createGit, quote, within } from './git.mjs';
 import { checkLock, latestScaffold, locksAt, scaffoldCommits } from './locks.mjs';
 import { MODEL_TABLE, createModels, resolveModels } from './models.mjs';
-import { SCHEMA_FILE, checkout, readPayload, wakeCommand } from './payload.mjs';
+import { KEY_PATTERN, SCHEMA_FILE, checkout, readPayload, wakeCommand } from './payload.mjs';
 import { runCommand } from './proof.mjs';
 import { AT_REST, STEPS, committing, describe, pinned, record, refusal } from './record.mjs';
 import { logLine } from './review.mjs';
-import { KEY_PATTERN, advance, conflictCommit, failedCommit, hasCopy, hasRun, intakeCommit, loadRun, located, newRun, ownPaths, runDir, runDirectory, saveRun, signalledCycle, stop } from './run.mjs';
+import { advance, conflictCommit, failedCommit, hasCopy, hasRun, intakeCommit, loadRun, located, newRun, ownPaths, runDir, runDirectory, saveRun, signalledCycle, stop } from './run.mjs';
 import { regressions } from './slice.mjs';
 import { onward } from './stages.mjs';
 

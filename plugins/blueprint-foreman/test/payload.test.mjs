@@ -9,7 +9,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { ENGINE } from '../lib/config.mjs';
-import { KEYWORDS, PRACTICES, SCHEMA, checkSchema, readPayload, validate, wakeCommand } from '../lib/payload.mjs';
+import { KEYWORDS, KEY_PATTERN, PRACTICES, SCHEMA, checkSchema, readPayload, validate, wakeCommand } from '../lib/payload.mjs';
 import { scratchDir } from './fixture.mjs';
 
 const FILE = JSON.parse(fs.readFileSync(new URL('../payload.schema.json', import.meta.url), 'utf8'));
@@ -88,7 +88,7 @@ test('a fire whose key or branches do not read is unreadable; one whose do but t
     ['{"branch": "PROJ-1-greet"', /^the fire is not JSON \(/],
     ...['[]', 'null', '"PROJ-1-greet"', '7', 'true'].map((t) => [t, /^fire must be an object$/]),
     [JSON.stringify(without('key')), /^fire\.key is missing$/],
-    [JSON.stringify(fire({ key: 'proj-1' })), /^fire\.key is "proj-1", which does not match its pattern$/],
+    [JSON.stringify(fire({ key: 'PROJ 1' })), /^fire\.key is "PROJ 1", which does not match its pattern$/],
     [JSON.stringify(without('branch')), /^fire\.branch is missing$/],
     [JSON.stringify(fire({ branch: null })), /^fire\.branch must be a string$/],
     [JSON.stringify(fire({ branch: 'claude/PROJ-1-greet', agentBranch: 'claude/claude/PROJ-1-greet' })), /^fire\.branch is "claude\/PROJ-1-greet", which does not match its pattern$/],
@@ -121,6 +121,22 @@ test('a fire whose key or branches do not read is unreadable; one whose do but t
   ]) {
     const read = readPayload(JSON.stringify(value));
     assert.deepEqual([read.unreadable, read.key, read.runBranch, read.problems, read.practices], [undefined, 'PROJ-1', 'claude/PROJ-1-greet', problems, undefined], JSON.stringify(value));
+  }
+});
+
+test('a key is a letter, then letters, digits and hyphens, a name its run directory, B and F take whole', () => {
+  const cwd = scratchDir('blueprint-foreman-keys-');
+  const branch = (name) => spawnSync('git', ['check-ref-format', '--branch', name], { cwd, stdio: 'ignore' }).status === 0;
+  for (const key of ['PROJ-1', 'PROJ-SAMPLE', 'PROJ-0', 'proj-1', 'Proj-42-b', 'ABC123', 'P']) {
+    const b = `${key}-greet`;
+    const read = readPayload(JSON.stringify(fire({ key, branch: b, agentBranch: `claude/${b}`, design: `docs/prs/${key}/blueprint.md` })));
+    assert.deepEqual([read.unreadable, read.problems, read.key], [undefined, [], key], key);
+    assert.ok(KEY_PATTERN.test(key), `record reads ${key} as a key`);
+    assert.ok(branch(b) && branch(`claude/${b}`), `git takes ${b} and claude/${b}`);
+  }
+  for (const key of ['', '1PROJ', '-PROJ', 'PROJ_1', 'PROJ.1', 'PROJ/1', '../PROJ', 'PROJ 1', 'PROJ:1', 'PROJ\\1', 'PROÉ-1', 'PROJ-1\n']) {
+    assert.match(readPayload(JSON.stringify(fire({ key }))).unreadable?.[0] ?? '', /^fire\.key is .*, which does not match its pattern$/, JSON.stringify(key));
+    assert.ok(!KEY_PATTERN.test(key), JSON.stringify(key));
   }
 });
 
