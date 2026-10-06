@@ -12,6 +12,7 @@
 
 import fs from 'node:fs';
 import { ENGINE } from './config.mjs';
+import { LOCK_RULE, lockedLines } from './locks.mjs';
 import { sliceOf } from './plan.mjs';
 import { authorRefusal, noAuthor, ownPaths, readRunJson, runDirectory, runFile } from './run.mjs';
 import { attemptDir, spend } from './slice.mjs';
@@ -299,6 +300,9 @@ export const REVIEW_STEPS = {
           ? `, and its exhibit (${(run.slice.exhibits ?? []).map((e) => e.file).join(', ')}) against the promise that it shows ${slice.exhibit.shows} (${slice.exhibit.form}), in what the system itself does or says, never a harness's verdict about it.`
           : `, and that its exhibit is rightly none (${slice.exhibit.none}).`;
       const carried = run.slice.carried ?? [];
+      // The locks are the engine's: it hands the reviewer the lines they hold, so the two cannot disagree.
+      fs.writeFileSync(attemptFile(ctx.root, run, 'locked.json'), `${JSON.stringify(lockedLines(ctx, run, run.slice.greenCommit), null, 2)}
+`);
       return [
         `${ctx.models.dispatch('contract')}, ${noAuthor(run)}, to judge slice`,
         `"${slice.id}" against criteria ${slice.criteria.join(', ')} in the design as the run admitted it (git show ${run.startCommit}:${run.design})${exhibit}`,
@@ -306,6 +310,7 @@ export const REVIEW_STEPS = {
         `(${at}/group-*.findings.json), the diff (${run.slice.base}..${run.slice.greenCommit}) and the slice's scope, and never runs the replays itself.`,
         BAR,
         "It fails the slice only for a scenario of its criteria the change does not meet, or a defect the change brings into what it touches; for anything else it passes, with the finding.",
+        `The locks are the engine's, which held this change to them before review: ${LOCK_RULE} The scaffold's locked lines at this green are in ${at}/locked.json, and a line not there is not locked. It raises no lock break of its own.`,
         ...(carried.length
           ? [
               "What the slice's failed reviews found is carried into this one: it joins the slice's findings, so the Contract",

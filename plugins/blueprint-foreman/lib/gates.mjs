@@ -16,6 +16,7 @@ import path from 'node:path';
 import { adversaryRoute, askAdversary, routeName, ADVERSARY_PROMPT } from './adversary.mjs';
 import { ENGINE } from './config.mjs';
 import { criteria, criterionKeys, designAt } from './design.mjs';
+import { LOCK_RULE } from './locks.mjs';
 import { checkApproval, nextSlice, readPlan } from './plan.mjs';
 import { BAR, ENGINE_RAISED, FINDINGS_FORM, acceptDispositions, checkFindings, dispositionsBrief } from './review.mjs';
 import { authorRefusal, noAuthor, openGate, ownPaths, readRunJson, runDirectory, runFile, same } from './run.mjs';
@@ -146,6 +147,7 @@ function finalBrief(ctx, run, pkg) {
     `its key: ${criterionKeys(designAt(ctx.git, run)).join(', ')}${handed.length ? '; and on every event model row the graph cannot show, by the name given here:' : '.'}`,
     ...rows,
     BAR,
+    `The locks are the engine's, and its convergence findings carry every break: ${LOCK_RULE} It raises no lock break of its own.`,
     `It writes ${runDirectory(run)}/${gateDir(run)}/contract.json, proposing findings only, and edits nothing else:`,
     `  ${CONTRACT_FORM}`,
     "An unmet verdict is a finding; the verdicts on the criteria go into the pull request's description.",

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
+import { LOCK_RULE } from '../lib/locks.mjs';
 import { acceptDispositions, checkFindings, diffHunks, groupDiff, groupText, logLine, readLog, settleDispositions } from '../lib/review.mjs';
 import { KEY, BRANCH, DESIGN, FILLED, GREEN_CODE, SCAFFOLDED, fixture, ok, refused, walk, restore, scratchDir, REVIEW, exhibit, GREETING, GREET_ROW, proposes } from './fixture.mjs';
 
@@ -290,4 +291,17 @@ test("the engine's own findings stand: a refutation of convergence's, or of an u
   const own = 'refuted, but the engine raised it itself, so handed off';
   assert.deepEqual(JSON.parse(f.read(`${FINAL}/settled.json`)).map((s) => [s.disposition, s.note]), [['refuted', undefined], ['handed-off', own], ['handed-off', own], ['handed-off', own]]);
   assert.deepEqual(f.runState().handedOff.map((h) => h.claim), ['the Contract Reviewer finds criterion "greets-by-name" unmet: the gap is open', ...convergence.findings.map((x) => x.claim)]);
+});
+
+test("the slice's Contract Reviewer is handed the engine's lock, rule and lines, so it cannot hold a comment the engine does not", async () => {
+  const f = fixture({ scaffold: true });
+  // Green fills the gap and rewords the scaffold's comment, which in a script is not locked.
+  const brief = await walk(f, 'contract-review', { slices: [SCAFFOLDED], green: { 'src/greet.mjs': FILLED.replace('as the scaffold placed it', 'reworded by Green') } });
+  assert.ok(brief.includes(`The locks are the engine's, which held this change to them before review: ${LOCK_RULE}`), brief);
+  assert.ok(brief.includes(`${REVIEW}/locked.json, and a line not there is not locked. It raises no lock break of its own.`), brief);
+  // The scaffold's code lines are locked; its comment and its gap are not.
+  assert.deepEqual(JSON.parse(f.read(`${REVIEW}/locked.json`)), { rule: LOCK_RULE, scaffold: ['src/greet.mjs:2', 'src/greet.mjs:4'] });
+  assert.match(LOCK_RULE, /In a script a comment is never locked\./);
+  // Red and Green are told the same rule.
+  assert.ok(f.read(`docs/prs/${KEY}/foreman/briefs/greet-by-name-green-1.md`).includes(LOCK_RULE));
 });

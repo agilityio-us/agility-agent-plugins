@@ -156,6 +156,9 @@ function holds(git, file, before, locked, commit, claim, whole = false) {
   return locked.filter((l) => broken.has(l.n)).map((l) => ({ file, line: l.n, claim: claim(l) }));
 }
 
+// The lock as every brief states it, so no subagent applies a rule of its own.
+export const LOCK_RULE = `Of the scaffold, change only lines carrying ${GAP_MARKER}: every other line it added is locked, in a script as its code's tokens, so code may be inserted around and within it. A landed slice's test lines are locked whole. In a script a comment is never locked. The engine checks the locks itself.`;
+
 // The lines the scaffold commit `sha` added to `file`, which it holds as `before`, but its gaps.
 const scaffoldLocked = (git, sha, file, before) => addedLines(git.commitFileDiff(sha, file), before).filter((l) => !l.text.includes(GAP_MARKER));
 
@@ -185,6 +188,10 @@ export function heldLines(git, sha, commit, apart = []) {
     });
   });
 }
+
+// What the run's locks hold at `commit`, as the engine computes them for a reviewer: the rule, and the
+// scaffold's locked lines as path:line where they stand there.
+export const lockedLines = (ctx, run, commit) => ({ rule: LOCK_RULE, scaffold: run.scaffold ? heldLines(ctx.git, run.scaffold, commit, [itemDirectory(run)]) : [] });
 
 // The landed slices' test lines no longer in place at `commit`. Each landed entry is { id, base,
 // commit, paths }: the lines its commits added under its frozen paths.

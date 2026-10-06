@@ -106,7 +106,9 @@ commented out or swallowed by a string breaks the line. In any other file, a loc
 appear, trimmed and in order, and so must a landed test's line in a script too, since code inserted
 within it can disarm it. Blank lines are never locked, nor are a script's comments. The engine reads
 tokens itself, since loading the repository's TypeScript would run code an implementer could plant,
-and reads every diff as text, whatever an attribute or a driver says of a file.
+and reads every diff as text, whatever an attribute or a driver says of a file. Every brief states
+this rule in the engine's words, and the slice's Contract Reviewer is handed the scaffold's locked
+lines at its green, so no reviewer holds a lock of its own: the locks are the engine's to judge.
 
 ## Bounds
 

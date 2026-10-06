@@ -16,6 +16,7 @@ import path from 'node:path';
 import { ENGINE, FOREMAN_CONFIG, EXHIBITS_VARIABLE, GAP_MARKER, isProtected } from './config.mjs';
 import { convergeIn } from './convergence.mjs';
 import { quote, within } from './git.mjs';
+import { LOCK_RULE } from './locks.mjs';
 import { isEdit, sliceOf } from './plan.mjs';
 import { judgeGreen, judgeKilled, judgeRed, judgeStill, passedNames, runCommand, runSuite, shownRun } from './proof.mjs';
 import { answersGiven, authorRefusal, maker, noAuthor, ownPaths, readRunJson, runDirectory, runFile, stop } from './run.mjs';
@@ -47,7 +48,7 @@ function grounding(run, slice, role) {
     `Criteria: ${slice.criteria.join(', ')} (in the design as the run admitted it: git show ${run.startCommit}:${run.design})`,
     ...(slice.exhibit ? [exhibit] : []),
     run.scaffold
-      ? `The scaffold (commit ${run.scaffold}) is locked: change only lines carrying ${GAP_MARKER}, and add code around every other line it wrote.`
+      ? `The scaffold (commit ${run.scaffold}) is locked. ${LOCK_RULE}`
       : 'The design has no scaffold commit.',
     ...(run.landed?.length ? [`The tests of the slices that landed (${run.landed.join(', ')}) must go on passing.`] : []),
     ...lastSpent(run, role),
