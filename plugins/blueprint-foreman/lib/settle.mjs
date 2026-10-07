@@ -12,10 +12,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { restoring } from './bounds.mjs';
-import { ENGINE } from './config.mjs';
+import { ENGINE, PRACTICES } from './config.mjs';
 import { criteria, designAt } from './design.mjs';
 import { within } from './git.mjs';
-import { PRACTICES } from './payload.mjs';
 import { exhibitsIn } from './slice.mjs';
 import { ownPaths, pullRequestFile, runDirectory, runFile } from './run.mjs';
 

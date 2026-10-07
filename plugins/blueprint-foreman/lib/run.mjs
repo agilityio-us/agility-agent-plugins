@@ -6,7 +6,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { BLUEPRINT_CONFIG, CYCLE_TRAILER, DEFAULT_SIGNAL, FOREMAN_CONFIG, RUN_TRAILER, SCAFFOLD_TRAILER, SIGNALS, STOP_TRAILER, checkAdapters, docsRootAt, isDesignPath, protectedPaths } from './config.mjs';
+import { BLUEPRINT_CONFIG, CYCLE_TRAILER, DEFAULT_SIGNAL, FOREMAN_CONFIG, RUN_TRAILER, SCAFFOLD_TRAILER, SIGNALS, STOP_TRAILER, checkAdapters, containment, docsRootAt, isDesignPath, protectedPaths } from './config.mjs';
 import { gitDirectory, quote } from './git.mjs';
 import { latestScaffold, scaffoldCommits } from './locks.mjs';
 
@@ -97,9 +97,9 @@ function disagreements(git, run) {
 // record the run took, a round the final gate's verdicts it gave, and an answer the words the fire gave.
 const KEPT = ['history', 'landed', 'landedTests', 'authors', 'handedOff', 'fixed', 'rounds', 'lessons', 'answers'];
 
-// The records that change the approved plan: the plan step's, and a gate's dispositions that fix a
-// finding in it.
-const REPLANS = [['plan', 'plan'], ['gate-dispositions', 'dispositions']];
+// The records that change the approved plan: the plan step's, a gate's dispositions that fix a
+// finding in it, and a replan, from whatever step of a slice took it.
+const REPLANS = [['plan', 'plan'], ['gate-dispositions', 'dispositions'], [null, 'replan']];
 
 // A gate's round, as the run state names it: the gate, its cycle and round, and the merge it opened on.
 const roundOf = (gate) => gate && [gate.name, gate.cycle, gate.round, gate.merge ?? ''].join(' ');
@@ -107,8 +107,8 @@ const roundOf = (gate) => gate && [gate.name, gate.cycle, gate.round, gate.merge
 // How the run state `next` does not follow from `prev`, an earlier one: its practices changed, a kept
 // record lost or changed an entry, a landed slice's passing tests changed, a count went down, or the
 // accepted commit went back on the branch's line, `line`, other than to where its slice restores the
-// code, or off it; the plan changed while a slice was in flight, or with no record between that
-// changes it; or within one gate round its findings, those it carries in or the convergence changed.
+// code, or off it; the plan changed while a slice was in flight but by a replan, or with no record
+// between that changes it; or within one gate round its findings, those it carries in or the convergence changed.
 // Compared along every run-state commit, the practices hold as the admitted one has them, whatever a
 // later fire's payload says.
 function unfollowed(prev, next, line) {
@@ -121,8 +121,9 @@ function unfollowed(prev, next, line) {
   if (at(next.accepted) < 0 || (at(next.accepted) < at(prev.accepted) && !restored)) problems.push(`its accepted commit, ${next.accepted}, does not follow ${prev.accepted} on the branch`);
   if (!same(prev.plan, next.plan)) {
     const records = (next.history ?? []).slice((prev.history ?? []).length);
-    if (prev.slice && prev.slice.id === next.slice?.id) problems.push(`its plan changed while slice "${prev.slice.id}" was in flight`);
-    else if (!records.some((h) => REPLANS.some(([step, what]) => h?.step === step && h.what === what))) problems.push("its plan changed, which only a plan record or a gate's dispositions change");
+    const replanned = records.some((h) => h?.what === 'replan');
+    if (prev.slice && prev.slice.id === next.slice?.id && !replanned) problems.push(`its plan changed while slice "${prev.slice.id}" was in flight`);
+    else if (!records.some((h) => REPLANS.some(([step, what]) => (step === null || h?.step === step) && h?.what === what))) problems.push("its plan changed, which only a plan record, a gate's dispositions or a replan change");
   }
   if (prev.gate && roundOf(prev.gate) === roundOf(next.gate)) {
     const round = `round ${prev.gate.round} of the ${prev.gate.name} gate`;
@@ -272,6 +273,17 @@ export function answersGiven(git, run) {
   ]);
 }
 
+
+// Every subagent's brief, `name`.md in the run directory's briefs/, so what each was told is on record
+// and the session passes it on whole, adding nothing: it carries every answer given in the cycle, an
+// answer that comes in during an attempt writing it again for the dispatch that resumes it, and where
+// the work may go. Returns its path as the dispatch names it.
+export function writeBrief(ctx, run, name, lines) {
+  const file = runFile(ctx.root, run, path.join('briefs', `${name}.md`));
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${[...lines, ...answersGiven(ctx.git, run), '', containment(ctx.root)].join('\n')}\n`);
+  return `${runDirectory(run)}/briefs/${name}.md`;
+}
 
 // The cycle the latest run-state commit for `key` along the branch's line names, for a failed signal
 // when the run state will not load, or null where none names one.

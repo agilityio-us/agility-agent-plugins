@@ -78,11 +78,11 @@ No lessons from this run.
   exhibit('settle-pull-request', `$ engine record ${KEY} notes\n${out}\n\npull-request.md:\n${body}`);
 });
 
-test("the pull request's description names the practices the run was admitted with, whatever a later fire names", async () => {
-  const f = fixture();
-  f.ctx.input = fire({ options: { practices: { mutant: false, lessons: false } } });
+test("the pull request's description names the practices the run was admitted with, whatever a later fire's environment turns on", async () => {
+  const f = fixture({ practices: { mutant: false, lessons: false } });
   await walk(f, 'red', { commit: true });
-  assert.match((await f.wake(fire())).text, /step: red/, 'a later fire names every practice on, in vain');
+  f.ctx.env = { BLUEPRINT_FOREMAN_PRACTICES: 'all' };
+  assert.match((await f.wake(fire())).text, /step: red/, 'a later fire turns every practice on, in vain');
   await settled(f);
   assert.match(f.read(`docs/prs/${KEY}/pull-request.md`), /\n## Practices\n\nRan: slices, red-green, review, adversary, exhibits\. Turned off: mutant, lessons\.\n\n## Gates\n/);
 });

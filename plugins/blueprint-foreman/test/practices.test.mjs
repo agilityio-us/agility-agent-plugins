@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
-import { PRACTICES, practicesOf } from '../lib/payload.mjs';
+import { ALL_PRACTICES, PRACTICES } from '../lib/config.mjs';
 import { checkApproval, checkPlan } from '../lib/plan.mjs';
 import { readLog } from '../lib/review.mjs';
 import { DESIGN, FAREWELL, FAREWELL_CODE, FAREWELL_TEST, FILLED, GREEN_CODE, KEY, MUTANTS, NOTES, SCAFFOLD, SLICE, SUITES, TEST_FILE, commitRun, fitted, fixture, mergeDefault, notesFor, ok, refused, restore, settled, walk, answer, fire, GREET_ROW, proposes } from './fixture.mjs';
@@ -38,11 +38,11 @@ function stagesHeld(f) {
   return { run, body };
 }
 
-test('a payload naming the branch alone runs every practice', async () => {
+test('an environment turning on all runs every practice', async () => {
   const f = fixture();
   await settled(f);
   const { run } = stagesHeld(f);
-  assert.deepEqual(run.practices, practicesOf());
+  assert.deepEqual(run.practices, ALL_PRACTICES);
   assert.deepEqual(steps(run), ['plan', 'gate', 'red', 'green', 'mutant', 'group-review', 'contract-review', 'gate', 'settle']);
 });
 
@@ -115,8 +115,9 @@ async function build(f, files, agent = 'agent-builder') {
   return f.engine('record', KEY, 'builder', agent);
 }
 
-test('with every practice off, a Builder that breaks the lock, touches a protected path or leaves a test failing spends an attempt, and an empty budget stops the run', async () => {
+test('with every practice off, a Builder that breaks the lock, touches a protected path or leaves a test failing spends an attempt, and an empty budget with no replan left stops the run', async () => {
   const f = fixture({ scaffold: true, practices: OFF });
+  f.ctx.config.replans = 0;
   await walk(f, 'builder');
   const { base } = f.runState().slice;
   // The Builder must change something, and be named; neither refusal is a try.
@@ -331,7 +332,7 @@ test('with lessons off, settle names no lesson home and takes no lessons commit,
 test("a plan declares none of the fields only a practice the run has off reads, and with slices off one slice beyond those that landed", () => {
   const keys = ['greets-by-name'];
   const suites = SUITES;
-  const problems = (plan, on) => checkPlan(plan, keys, suites, [], { ...practicesOf(), ...on }).join('\n');
+  const problems = (plan, on) => checkPlan(plan, keys, suites, [], { ...ALL_PRACTICES, ...on }).join('\n');
   const builder = fitted(SLICE, { 'red-green': false, mutant: true, exhibits: true });
   assert.equal(problems({ slices: [builder] }, { 'red-green': false }), '');
   const declared = problems({ slices: [{ ...SLICE, substitute: { broken: { file: 'src/greet.mjs', find: 'a', replace: 'b' }, reason: 'r' } }] }, { 'red-green': false, mutant: false, exhibits: false });
@@ -341,9 +342,9 @@ test("a plan declares none of the fields only a practice the run has off reads, 
   // A practice on still asks for its fields, whatever else is off.
   assert.match(problems({ slices: [{ ...builder, mutant: undefined }] }, { 'red-green': false }), /needs "mutant": \{ "breaks"/);
   assert.match(problems({ slices: [{ ...SLICE, exhibit: { none: 'nothing' } }] }, {}), /no slice promises an exhibit/);
-  assert.equal(problems({ slices: [fitted(SLICE, { ...practicesOf(), exhibits: false })] }, { exhibits: false }), '');
+  assert.equal(problems({ slices: [fitted(SLICE, { ...ALL_PRACTICES, exhibits: false })] }, { exhibits: false }), '');
   // With slices off, the plan adds one slice to those that landed, and none depends on another.
-  const run = { practices: { ...practicesOf(), slices: false }, adapters: { suites }, protect: [], landed: [] };
+  const run = { practices: { ...ALL_PRACTICES, slices: false }, adapters: { suites }, protect: [], landed: [] };
   assert.deepEqual(checkApproval({ slices: [SLICE] }, run, keys), []);
   assert.match(checkApproval({ slices: [SLICE, FAREWELL] }, run, keys).join('\n'), /the slices practice is off, so the plan adds one slice to those that landed, not 2: "greet-by-name", "say-farewell"[\s\S]*slice "say-farewell" depends on another/);
   assert.deepEqual(checkApproval({ slices: [SLICE, { ...FAREWELL, dependsOn: [] }] }, { ...run, landed: ['greet-by-name'], plan: { slices: [SLICE] } }, keys), []);
@@ -369,4 +370,35 @@ test('with every practice off, a merge taken in at rest moves the Builder\'s bas
   assert.deepEqual(run.rounds.at(-1), { at: `gates/final-c1-merge-${merge.slice(0, 12)}-r1`, gate: 'final', cycle: 1, round: 1, merge, adversary: null });
   assert.equal(run.accepted, f.sh('rev-parse', 'HEAD'));
   assert.match(readLog(f.root, f.runState()), new RegExp(`gate=final cycle=1 round=1 reviewer=engine model=- provider=- findings=0\\n$`));
+});
+
+test("with no practice in the routine's environment, a run holds none and settles as one with every practice off does", async () => {
+  const f = fixture({ scaffold: true });
+  f.ctx.env = {};
+  assert.match(await ok(f, 'wake'), /single vertical slice, delivering every acceptance criterion/);
+  assert.deepEqual(f.runState().practices, OFF);
+  await walk(f, 'settle', { commit: true });
+  assert.deepEqual(steps(f.runState()), ['plan', 'builder']);
+});
+
+test("the routine's environment turns on what it lists, and a fire's options, whatever they hold, are ignored", async () => {
+  const f = fixture();
+  f.ctx.env = { BLUEPRINT_FOREMAN_PRACTICES: 'red-green, mutant' };
+  f.ctx.input = fire({ options: { practices: { 'red-green': false, mutant: 'no' }, models: { author: 'x' }, other: [1] } });
+  await ok(f, 'wake');
+  assert.deepEqual(f.runState().practices, { ...OFF, 'red-green': true, mutant: true });
+});
+
+test("an environment that names no practice, or a zero data retention neither true nor false, fails the intake, naming the variable", async () => {
+  for (const [env, reason] of [
+    [{ BLUEPRINT_FOREMAN_PRACTICES: 'mutant,speed' }, 'BLUEPRINT_FOREMAN_PRACTICES names "speed", not a practice: list any of slices, red-green, mutant, review, adversary, exhibits, lessons, or "all"'],
+    [{ BLUEPRINT_FOREMAN_PRACTICES: 'all', BLUEPRINT_FOREMAN_ADVERSARY_ZDR: 'yes' }, 'BLUEPRINT_FOREMAN_ADVERSARY_ZDR is "yes", and must be true or false'],
+  ]) {
+    const f = fixture();
+    f.ctx.env = env;
+    const text = refused(await f.engine('wake'), /^blueprint-foreman PROJ-1 · failed\n/);
+    assert.ok(text.includes(`\n  - ${reason}\n`), text);
+    assert.match(text, /Commit the signal, then push it, and end the session: git commit --quiet --allow-empty --only .+ --trailer 'Foreman-Run: PROJ-1 failed' --trailer 'Blueprint-Status: failed'$/m);
+    assert.equal(f.hasRun(), false, 'no run is admitted');
+  }
 });

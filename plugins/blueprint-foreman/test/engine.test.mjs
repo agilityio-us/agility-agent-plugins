@@ -137,7 +137,7 @@ function fixture({ design = DESIGN, designFile = DESIGN_FILE, adapters = ADAPTER
   const scaffolded = scaffold && commit(`chore(${KEY}): scaffold the agreed design`, Object.entries({ ...(report === null ? {} : { [reportFile]: report }), ...scaffold }).map(([file, text]) => (write(file, text), file)), trailer);
   if (!designFirst) designed();
   tip();
-  const ctx = { root, git: createGit(root), now: () => '2026-09-26T00:00:00.000Z', config: { testTimeoutMs: 60_000 }, env: {}, input: PAYLOAD };
+  const ctx = { root, git: createGit(root), now: () => '2026-09-26T00:00:00.000Z', config: { testTimeoutMs: 60_000 }, env: { BLUEPRINT_FOREMAN_PRACTICES: 'all' }, input: PAYLOAD };
   const runFile = path.join(root, 'docs', 'prs', KEY, 'foreman', 'run.json');
   const wake = (payload) => run(['wake'], { ...ctx, input: typeof payload === 'string' ? payload : JSON.stringify(payload) });
   return { root, ctx, scaffolded, write, commit, sh: (...a) => sh(root, ...a), engine: (...argv) => run(argv, ctx), wake, runFile, state: () => JSON.parse(fs.readFileSync(runFile, 'utf8')) };
@@ -372,8 +372,8 @@ test("a branch that carries no run is admitted only on the code at the tip of Bl
 
 test('a fire whose key and branches read but that fails the schema otherwise fails: at intake, and on a run, whose state it leaves as it was', async () => {
   const f = fixture();
-  const bad = fire({ options: { practices: { mutant: 'no', speed: false } }, extra: 1 });
-  const reason = 'the fire does not meet payload.schema.json: fire.options.practices.mutant must be a boolean; fire.options.practices.speed is not allowed; fire.extra is not allowed';
+  const bad = fire({ options: { practices: { mutant: 'no', speed: false } }, extra: 1, answer: 3 });
+  const reason = 'the fire does not meet payload.schema.json: fire.answer must be a string or null; fire.extra is not allowed';
   const text = await unadmitted(f, 'failed', /^blueprint-foreman PROJ-2 · failed\n {2}- [^\n]+\n\nCommit/, bad);
   assert.ok(text.includes(`\n  - ${reason}\n`), text);
   shell(f, /^Commit the signal, then push it, and end the session: (.+)$/m.exec(text)[1]);
@@ -391,17 +391,31 @@ test('a fire whose key and branches read but that fails the schema otherwise fai
   assert.match((await f.engine('wake')).text, /^blueprint-foreman PROJ-2 · step: plan/);
 });
 
-test('a run keeps the practices it was admitted with: a later fire names others in vain, and a run state that changes them will not load', async () => {
+test("a run keeps the practices, models and Adversary its environment gave at admission: a later fire's environment or options change nothing, and a run state that changes them will not load", async () => {
   const f = fixture();
-  const out = await f.wake(fire({ options: { practices: { mutant: false, lessons: false } } }));
+  f.ctx.env = {
+    BLUEPRINT_FOREMAN_PRACTICES: 'slices,red-green,review,adversary,exhibits',
+    BLUEPRINT_FOREMAN_MODEL_BROAD: 'm-broad',
+    BLUEPRINT_FOREMAN_MODEL_REVIEWER: 'm-reviewer',
+    BLUEPRINT_FOREMAN_ADVERSARY_MODEL: 'v/m',
+    BLUEPRINT_FOREMAN_ADVERSARY_ZDR: 'false',
+  };
+  const out = await f.wake(fire({ options: { practices: { mutant: true, lessons: true } } }));
   assert.equal(out.code, 0, out.text);
   const pinned = { slices: true, 'red-green': true, mutant: false, review: true, adversary: true, exhibits: true, lessons: false };
-  assert.deepEqual(f.state().practices, pinned);
+  const models = { ...MODEL_TABLE, broad: 'm-broad', reviewer: 'm-reviewer', adversary: 'v/m' };
+  const admitted = f.state();
+  assert.deepEqual([admitted.practices, admitted.models, admitted.adversary.zdr], [pinned, models, false]);
   shell(f, /^Commit the run state, then push it: (.+)$/m.exec(out.text)[1]);
-  for (const practices of [undefined, {}, { mutant: true }, { review: false, adversary: false }]) {
-    const later = await f.wake(fire({ options: practices ? { practices } : undefined }));
+  for (const [env, options] of [
+    [{}, undefined],
+    [{ BLUEPRINT_FOREMAN_PRACTICES: 'all' }, {}],
+    [{ BLUEPRINT_FOREMAN_PRACTICES: 'mutant', BLUEPRINT_FOREMAN_MODEL_BROAD: 'm-other', BLUEPRINT_FOREMAN_ADVERSARY_ZDR: 'true' }, { practices: { review: false } }],
+  ]) {
+    f.ctx.env = env;
+    const later = await f.wake(fire({ options }));
     assert.match(later.text, /^blueprint-foreman PROJ-2 · step: plan/, later.text);
-    assert.deepEqual(f.state().practices, pinned);
+    assert.deepEqual([f.state().practices, f.state().models, f.state().adversary], [pinned, models, admitted.adversary]);
   }
   // A run state whose practices are not the admitted run state's will not load, however it came.
   const forged = `${JSON.stringify({ ...f.state(), practices: { ...pinned, mutant: true } }, null, 2)}\n`;
@@ -498,8 +512,6 @@ test('the adapters are checked field by field, each bad field refused, and field
     ...[undefined, ['../outside'], ['/abs'], ['C:/tools/extract.mjs'], [3], 'extract.mjs'].map((protect) => [withForeman({ protect }), own("protect must list the extractor's own paths")]),
     [withForeman({ install: undefined }), own('install must be')],
     ...[['../up'], 'CLAUDE.md', [3]].map((lessonHomes) => [withForeman({ lessonHomes }), own('lessonHomes must list repository-relative paths')]),
-    ...[{ author: 'm' }, { broad: '' }, []].map((models) => [withForeman({ models }), own('models must map roles (broad, contained, reviewer, adversary-fallback) to model ids')]),
-    ...[{ model: '' }, { zeroDataRetention: 'yes' }, { route: 'x' }, 'x'].map((adversary) => [withForeman({ adversary }), own('adversary must be { model?, zeroDataRetention? }')]),
     ...[{}, [ADAPTERS.foreman.suites.unit]].map((suites) => [withForeman({ suites }), own('suites must declare at least one suite, keyed by name')]),
     ...[null, [], 'jest {files} {report}'].map((s) => [suite(s), own('suites.unit must be { command, report, all?, cwd?, env?, timeout? }')]),
     [unit({ command: 'jest {report}' }), own('suites.unit.command must be a shell command holding {files}')],
@@ -528,9 +540,10 @@ test('the adapters are checked field by field, each bad field refused, and field
   assert.equal('scaffold' in adapters, false);
   assert.equal('typeWords' in adapters, false, 'no type words unless declared');
   assert.deepEqual(check(tooling({ typeWords: { aggregate: 'Aggregate' } })).adapters.typeWords, { aggregate: 'Aggregate' });
-  assert.deepEqual([adapters.lessonHomes, settings], [['CLAUDE.md', '.claude/rules'], { models: {}, adversary: {} }], 'the defaults');
-  const named = check(withForeman({ lessonHomes: ['AGENTS.md'], models: { broad: 'm-1' }, adversary: { model: 'v/m', zeroDataRetention: false } }));
-  assert.deepEqual([named.adapters.lessonHomes, named.settings], [['AGENTS.md'], { models: { broad: 'm-1' }, adversary: { model: 'v/m', zeroDataRetention: false } }]);
+  assert.deepEqual([adapters.lessonHomes, settings], [['CLAUDE.md', '.claude/rules'], undefined], 'the defaults');
+  // Models and an Adversary are the environment's: the harness's file naming them, in any form, is ignored.
+  const named = check(withForeman({ lessonHomes: ['AGENTS.md'], models: { author: '' }, adversary: 'x' }));
+  assert.deepEqual([named.problems, named.adapters.lessonHomes, 'models' in named.adapters, named.settings], [[], ['AGENTS.md'], false, undefined]);
   // A suite may declare `all`, the command that runs it whole; {report} in an env value serves both.
   const whole = check(unit({ command: 'jest {files}', all: 'jest', env: { OUT: '{report}' } }));
   assert.deepEqual([whole.problems, whole.adapters.suites.unit.all], [[], 'jest']);
@@ -892,7 +905,9 @@ test("each subagent runs on its role's model: the strongest Claude reviews and t
   const [strongest, faster] = ['claude-opus-5-5', 'claude-sonnet-5-5'];
   const models = createModels(MODEL_TABLE, {});
   for (const role of ['red', 'green']) assert.deepEqual([models.pick(role, { complexity: 'broad' }), models.pick(role, { complexity: 'contained' })], [strongest, faster], role);
-  assert.deepEqual(['mutant', 'reviewer', 'contract', 'adversary-fallback'].map((role) => models.dispatch(role)), ['Mutant subagent', 'Reviewer', 'Contract Reviewer', 'Adversary subagent'].map((name) => `Dispatch a fresh ${name} (model ${strongest})`));
-  assert.equal(models.dispatch('red', { complexity: 'broad' }), `Dispatch a fresh Red subagent (model ${strongest})`);
+  const prompt = (brief) => `whose whole prompt is "Follow the brief in ${brief}."`;
+  assert.deepEqual(['mutant', 'reviewer', 'contract', 'adversary-fallback'].map((role) => models.dispatch(role, `b/${role}.md`)), [['Mutant subagent', 'mutant'], ['Reviewer', 'reviewer'], ['Contract Reviewer', 'contract'], ['Adversary subagent', 'adversary-fallback']].map(([name, role]) => `Dispatch a fresh ${name} (model ${strongest}) ${prompt(`b/${role}.md`)}`));
+  assert.equal(models.dispatch('red', 'b/red.md', { complexity: 'broad' }), `Dispatch a fresh Red subagent (model ${strongest}) ${prompt('b/red.md')}`);
+  assert.equal(models.dispatch('green', 'b/green.md', { complexity: 'contained' }), `Dispatch a fresh Green subagent (model ${faster}) ${prompt('b/green.md')}`);
   assert.throws(() => models.pick('author'), /no model for role "author"/);
 });

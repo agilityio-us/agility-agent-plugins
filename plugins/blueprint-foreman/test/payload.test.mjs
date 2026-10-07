@@ -8,8 +8,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { ENGINE } from '../lib/config.mjs';
-import { KEYWORDS, KEY_PATTERN, PRACTICES, SCHEMA, checkSchema, readPayload, validate, wakeCommand } from '../lib/payload.mjs';
+import { ENGINE, PRACTICES, VARIABLES, fromEnvironment, practicesOf } from '../lib/config.mjs';
+import { KEYWORDS, KEY_PATTERN, SCHEMA, checkSchema, readPayload, validate, wakeCommand } from '../lib/payload.mjs';
 import { scratchDir } from './fixture.mjs';
 
 const FILE = JSON.parse(fs.readFileSync(new URL('../payload.schema.json', import.meta.url), 'utf8'));
@@ -54,15 +54,12 @@ test('the engine will not load beside a schema using a keyword it does not inter
   await assert.rejects(import(pathToFileURL(path.join(dir, 'lib', 'payload.mjs')).href), /uses the keyword "maxLength" at #\/properties\/branch/);
 });
 
-test('a fire names the key, B, F, the design and the signal, and its options may turn practices off: each it does not name is on', () => {
-  assert.deepEqual(PRACTICES, ['slices', 'red-green', 'mutant', 'review', 'adversary', 'exhibits', 'lessons']);
-  const every = (on) => Object.fromEntries(PRACTICES.map((p) => [p, on]));
-  for (const [value, practices, settings] of [
-    [fire(), every(true), {}],
-    [without('title', 'pullRequest', 'answer', 'options'), every(true), {}],
-    [fire({ options: { practices: {} } }), every(true), {}],
-    [fire({ options: { practices: { mutant: false, lessons: true } } }), { ...every(true), mutant: false }, {}],
-    [fire({ options: { practices: every(false), models: { broad: 'm' }, adversary: { zeroDataRetention: false } } }), every(false), { models: { broad: 'm' }, adversary: { zeroDataRetention: false } }],
+test('a fire names the key, B, F, the design and the signal, and its options, any object, are ignored', () => {
+  for (const value of [
+    fire(),
+    without('title', 'pullRequest', 'answer', 'options'),
+    fire({ options: { practices: { mutant: false } } }),
+    fire({ options: { practices: { mutant: 'no', speed: false }, models: { author: 'm' }, anything: [1] } }),
   ]) {
     assert.deepEqual(readPayload(` ${JSON.stringify(value)}\n`), {
       value,
@@ -72,8 +69,6 @@ test('a fire names the key, B, F, the design and the signal, and its options may
       design: 'docs/prs/PROJ-1/blueprint.md',
       signal: 'Blueprint-Status',
       answer: null,
-      practices,
-      settings,
       problems: [],
     });
   }
@@ -110,18 +105,38 @@ test('a fire whose key or branches do not read is unreadable; one whose do but t
     ...['/docs/prs/PROJ-1/blueprint.md', 'docs/prs/PROJ-1/design.md', 'docs/../PROJ-1/blueprint.md'].map((design) => [fire({ design }), [`fire.design is ${JSON.stringify(design)}, which does not match its pattern`]]),
     [fire({ design: 'docs/prs/PROJ-2/blueprint.md' }), ['fire.design is "docs/prs/PROJ-2/blueprint.md", not <docsRoot>/PROJ-1/blueprint.md']],
     ...[[], null, 'none'].map((options) => [fire({ options }), ['fire.options must be an object']]),
-    [fire({ options: { practices: { mutant: 'no' } } }), ['fire.options.practices.mutant must be a boolean']],
-    [fire({ options: { practices: { mutant: 0, review: null } } }), ['fire.options.practices.mutant must be a boolean', 'fire.options.practices.review must be a boolean']],
-    [fire({ options: { practices: { speed: false } } }), ['fire.options.practices.speed is not allowed']],
-    [fire({ options: { practices: { 'red green': false } } }), ['fire.options.practices["red green"] is not allowed']],
-    [fire({ options: { models: { author: 'm' } } }), ['fire.options.models.author is not allowed']],
-    [fire({ options: { models: { broad: ' ' } } }), ['fire.options.models must map roles (broad, contained, reviewer, adversary-fallback) to model ids']],
-    [fire({ options: { adversary: { zeroDataRetention: 'yes' } } }), ['fire.options.adversary.zeroDataRetention must be a boolean']],
-    [fire({ extra: 1, options: { Practices: {} } }), ['fire.options.Practices is not allowed', 'fire.extra is not allowed']],
+    [fire({ extra: 1, options: { Practices: {} } }), ['fire.extra is not allowed']],
   ]) {
     const read = readPayload(JSON.stringify(value));
-    assert.deepEqual([read.unreadable, read.key, read.runBranch, read.problems, read.practices], [undefined, 'PROJ-1', 'claude/PROJ-1-greet', problems, undefined], JSON.stringify(value));
+    assert.deepEqual([read.unreadable, read.key, read.runBranch, read.problems], [undefined, 'PROJ-1', 'claude/PROJ-1-greet', problems], JSON.stringify(value));
   }
+});
+
+test("the routine's environment turns practices on, none where it names none, and names the models and the Adversary", () => {
+  assert.deepEqual(PRACTICES, ['slices', 'red-green', 'mutant', 'review', 'adversary', 'exhibits', 'lessons']);
+  const every = (on) => Object.fromEntries(PRACTICES.map((p) => [p, on]));
+  assert.deepEqual(practicesOf(), every(false));
+  const none = { models: {}, adversary: {} };
+  for (const [env, practices, settings] of [
+    [{}, every(false), none],
+    [{ [VARIABLES.practices]: '' }, every(false), none],
+    [{ [VARIABLES.practices]: 'all' }, every(true), none],
+    [{ [VARIABLES.practices]: ' mutant, lessons ' }, { ...every(false), mutant: true, lessons: true }, none],
+    [{ [VARIABLES.practices]: 'slices red-green\treview' }, { ...every(false), slices: true, 'red-green': true, review: true }, none],
+    [
+      { [VARIABLES.models.broad]: 'm-1', [VARIABLES.models['adversary-fallback']]: 'm-2', [VARIABLES.adversaryModel]: 'v/m', [VARIABLES.zeroDataRetention]: 'false' },
+      every(false),
+      { models: { broad: 'm-1', 'adversary-fallback': 'm-2' }, adversary: { model: 'v/m', zeroDataRetention: false } },
+    ],
+    [{ [VARIABLES.zeroDataRetention]: 'true', [VARIABLES.models.reviewer]: ' ' }, every(false), { models: {}, adversary: { zeroDataRetention: true } }],
+  ]) {
+    assert.deepEqual(fromEnvironment(env), { practices, settings, problems: [] }, JSON.stringify(env));
+  }
+  assert.deepEqual(Object.values(VARIABLES.models), ['BLUEPRINT_FOREMAN_MODEL_BROAD', 'BLUEPRINT_FOREMAN_MODEL_CONTAINED', 'BLUEPRINT_FOREMAN_MODEL_REVIEWER', 'BLUEPRINT_FOREMAN_MODEL_ADVERSARY_FALLBACK']);
+  assert.deepEqual(fromEnvironment({ [VARIABLES.practices]: 'mutant,speed,Review' }).problems, [
+    'BLUEPRINT_FOREMAN_PRACTICES names "speed", "Review", not a practice: list any of slices, red-green, mutant, review, adversary, exhibits, lessons, or "all"',
+  ]);
+  assert.deepEqual(fromEnvironment({ [VARIABLES.zeroDataRetention]: 'yes' }).problems, ['BLUEPRINT_FOREMAN_ADVERSARY_ZDR is "yes", and must be true or false']);
 });
 
 test('a key is a letter, then letters, digits and hyphens, a name its run directory, B and F take whole', () => {

@@ -13,28 +13,20 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ENGINE, FOREMAN_CONFIG, EXHIBITS_VARIABLE, GAP_MARKER, containment, isProtected } from './config.mjs';
+import { ENGINE, FOREMAN_CONFIG, EXHIBITS_VARIABLE, GAP_MARKER, isProtected } from './config.mjs';
 import { convergeIn } from './convergence.mjs';
 import { quote, within } from './git.mjs';
 import { LOCK_RULE } from './locks.mjs';
-import { isEdit, sliceOf } from './plan.mjs';
+import { isEdit, replansLeft, sliceOf } from './plan.mjs';
 import { judgeGreen, judgeKilled, judgeRed, judgeStill, passedNames, runCommand, runSuite, shownRun } from './proof.mjs';
-import { answersGiven, authorRefusal, maker, noAuthor, ownPaths, readRunJson, runDirectory, runFile, stop } from './run.mjs';
+import { authorRefusal, maker, noAuthor, ownPaths, readRunJson, runDirectory, runFile, stop, writeBrief } from './run.mjs';
 
 // Where the slice's current attempt keeps its evidence in the run directory: the mutant, the replays and
 // the reviews.
 export const attemptDir = (run) => `review/${run.slice.id}-${run.slice.attempt}`;
 
-// A brief is written for each role and attempt, so what a subagent was told is on record, and carries
-// every answer given in the cycle: an answer that comes in during an attempt writes it again, for the
-// dispatch that resumes it.
-function writeBrief(ctx, run, role, lines) {
-  const name = `${run.slice.id}-${role}-${run.slice.attempt}.md`;
-  const file = runFile(ctx.root, run, path.join('briefs', name));
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${[...lines, ...answersGiven(ctx.git, run), containment(ctx.root)].join('\n')}\n`);
-  return `${runDirectory(run)}/briefs/${name}`;
-}
+// A brief for `role` on the slice's current attempt (run.mjs).
+export const sliceBrief = (ctx, run, role, lines) => writeBrief(ctx, run, `${run.slice.id}-${role}-${run.slice.attempt}`, lines);
 
 // The brief lines every Red, Green and Builder shares: what the slice is for, what binds the code, and
 // why the last attempt was spent, where it went back to `role`. A plan declares an exhibit only where
@@ -130,12 +122,13 @@ export function exhibitsIn(root, dir) {
 }
 
 // A failed try: spend one attempt and go back to the step whose work failed, `to` red or green, or with
-// red-green off the Builder, or stop when the budget is empty. What the spent attempt made
+// red-green off the Builder; when the budget is empty, replan, with the slice's code restored to its
+// base, or stop where the cycle has no replan left. What the spent attempt made
 // goes with it, its proof run and mutants among them: the slice keeps its base, what its failed reviews
 // found, for green the accepted red and its Red, and `kept`, and why the attempt was spent, for the next
 // brief of that step. Either way the code is restored to where the retry starts from, the accepted red
 // for green and the slice's base for red and the Builder, before the run state is committed.
-export function spend(run, reasons, to, kept = {}) {
+export function spend(ctx, run, reasons, to, kept = {}) {
   const back = maker(run, to);
   const budget = run.slice.budget - 1;
   const { id, base, attempt, redCommit, redAgent, carried } = run.slice;
@@ -144,6 +137,14 @@ export function spend(run, reasons, to, kept = {}) {
   const slice = { id, base, attempt, carried, spent, ...(back === 'green' ? { redCommit, redAgent } : {}), ...kept, budget: Math.max(budget, 0) };
   // Once restored, the code is where the engine last accepted it again.
   const accepted = from;
+  if (budget <= 0 && replansLeft(ctx, run) > 0) {
+    return {
+      refused: [...reasons, `slice "${run.slice.id}" has used all its attempts: replan it`],
+      next: 'replan',
+      restore: base,
+      extra: { accepted: base, slice: { ...slice, spent: { ...spent, to: 'replan' } } },
+    };
+  }
   if (budget <= 0) {
     return {
       refused: [...reasons, `slice "${run.slice.id}" has used all its attempts, and the run stops`],
@@ -195,7 +196,7 @@ export function replayed(run, ctx, mutant = null, agentId = null) {
     const own = testsAt(ctx, run, dir, slice.test, { install: run.adapters.install });
     const green = judgeGreen(own, slice.substitute ? [] : (slice.test.expectFail ?? []));
     if (!green.length) green.push(...regressions(ctx, run, dir, slice, own));
-    if (green.length) return spend(run, green.map((r) => `green replay: ${r}`), 'green');
+    if (green.length) return spend(ctx, run, green.map((r) => `green replay: ${r}`), 'green');
     if (mutant) {
       const failed = applyEdit(dir, mutant);
       const judged = failed ? { killed: false, reasons: [failed] } : judgeKilled(testsAt(ctx, run, dir, slice.test, {}));
@@ -206,12 +207,12 @@ export function replayed(run, ctx, mutant = null, agentId = null) {
         return { refused: [`the mutant (${described(mutant)}) broke the build rather than the behaviour: ${judged.reasons[0]}`], next: 'mutant', extra: { slice: { ...run.slice, lastMutant: `${described(mutant)}, which broke the build` } } };
       }
       if (!judged.killed && !first) return { next: 'mutant', extra: { slice: { ...run.slice, survivor: mutant, lastMutant: undefined } } };
-      if (!judged.killed) return spend(run, judged.reasons.map((r) => `the second mutant (${described(mutant)}) survived, as the first did (${described(first)}): ${r}`), 'red');
+      if (!judged.killed) return spend(ctx, run, judged.reasons.map((r) => `the second mutant (${described(mutant)}) survived, as the first did (${described(first)}): ${r}`), 'red');
     }
     if (slice.substitute || !run.slice.redCommit) return null;
     ctx.git.checkoutIn(dir, run.slice.redCommit);
     const red = judgeRed(testsAt(ctx, run, dir, slice.test, { install: run.adapters.install }), slice.test.expectFail);
-    if (red.length) return spend(run, red.map((r) => `red replay: ${r}`), 'red');
+    if (red.length) return spend(ctx, run, red.map((r) => `red replay: ${r}`), 'red');
     return null;
   });
   if (outcome) return outcome;
@@ -331,17 +332,17 @@ function proofRun(run, ctx, slice, named) {
   const own = testsAt(ctx, run, ctx.root, slice.test, { exhibits: dir });
   const reasons = [...judgeGreen(own, named)];
   if (!reasons.length) reasons.push(...regressions(ctx, run, ctx.root, slice, own));
-  if (reasons.length) return spend(run, reasons, 'green');
+  if (reasons.length) return spend(ctx, run, reasons, 'green');
   if (slice.exhibit?.command) {
     const written = runCommand({ cwd: ctx.root, command: slice.exhibit.command, timeoutMs: ctx.config.testTimeoutMs, env: { [EXHIBITS_VARIABLE]: dir } });
-    if (written.exitCode !== 0) return spend(run, [`the exhibit command failed (exit ${written.exitCode}):\n${written.tail}`], 'red');
+    if (written.exitCode !== 0) return spend(ctx, run, [`the exhibit command failed (exit ${written.exitCode}):\n${written.tail}`], 'red');
   }
   // Each exhibit is recorded by the blob id git would store for it, so settle can tell it from a copy;
   // a slice that promises none keeps none, whatever tests it shares a file with wrote.
   const exhibits = slice.exhibit?.shows ? exhibitsIn(ctx.root, dir).map((file) => ({ file, blob: ctx.git.hashFile(file) })) : [];
   if (!slice.exhibit?.shows) fs.rmSync(dir, { recursive: true, force: true });
   if (slice.exhibit?.shows && exhibits.length === 0) {
-    return spend(run, [`slice "${slice.id}" promises an exhibit (${slice.exhibit.shows}), but its proof run wrote nothing to $${EXHIBITS_VARIABLE}; its tests must produce it`], 'red');
+    return spend(ctx, run, [`slice "${slice.id}" promises an exhibit (${slice.exhibit.shows}), but its proof run wrote nothing to $${EXHIBITS_VARIABLE}; its tests must produce it`], 'red');
   }
   // A new candidate's mutants start afresh.
   return { candidate: { ...run.slice, greenCommit: ctx.git.head(), exhibits, passing: passedNames(own), survivor: undefined, lastMutant: undefined } };
@@ -354,7 +355,7 @@ export const SLICE_STEPS = {
     instruct(run, ctx) {
       const slice = sliceOf(run);
       const allowed = [...slice.frozen, ...(slice.stubs ?? [])];
-      const brief = writeBrief(ctx, run, 'red', [
+      const brief = sliceBrief(ctx, run, 'red', [
         `# Red: ${slice.id} (${run.key}), attempt ${run.slice.attempt}`,
         '',
         ...grounding(run, slice, 'red'),
@@ -370,7 +371,7 @@ export const SLICE_STEPS = {
         'Report what you wrote. Do not commit.',
       ]);
       return [
-        `${ctx.models.dispatch('red', slice)} with the brief in ${brief}.`,
+        `${ctx.models.dispatch('red', brief, slice)}`,
         `Then commit only its changes to ${allowed.join(', ')} as "test(${run.key}): red for ${slice.id}", and record them with the Red dispatch's agent id.`,
       ];
     },
@@ -401,7 +402,7 @@ export const SLICE_STEPS = {
         reasons = judgeRed(own, slice.test.expectFail);
       }
       if (!reasons.length) reasons = regressions(ctx, run, ctx.root, slice, own);
-      if (reasons.length) return spend(run, reasons, 'red');
+      if (reasons.length) return spend(ctx, run, reasons, 'red');
       const redCommit = ctx.git.head();
       return { next: 'green', extra: { accepted: redCommit, slice: { ...run.slice, redCommit, redAgent: agentId } } };
     },
@@ -412,7 +413,7 @@ export const SLICE_STEPS = {
     records: 'green',
     instruct(run, ctx) {
       const slice = sliceOf(run);
-      const brief = writeBrief(ctx, run, 'green', [
+      const brief = sliceBrief(ctx, run, 'green', [
         `# Green: ${slice.id} (${run.key}), attempt ${run.slice.attempt}`,
         '',
         ...grounding(run, slice, 'green'),
@@ -422,7 +423,7 @@ export const SLICE_STEPS = {
         'Change only what the outcome needs. Report what you changed and why. Do not commit.',
       ]);
       return [
-        `${ctx.models.dispatch('green', slice)}, not the Red subagent, with the brief in ${brief}.`,
+        `${ctx.models.dispatch('green', brief, slice)}, not the Red subagent.`,
         `Then commit its changes as "feat(${run.key}): ${slice.id}"${slice.substitute ? ', if it made any' : ''}, and record them with the Green dispatch's agent id.`,
       ];
     },
@@ -456,7 +457,7 @@ export const SLICE_STEPS = {
     instruct(run, ctx) {
       const slice = sliceOf(run);
       const landed = landedFrozen(run);
-      const brief = writeBrief(ctx, run, 'builder', [
+      const brief = sliceBrief(ctx, run, 'builder', [
         `# Builder: ${slice.id} (${run.key}), attempt ${run.slice.attempt}`,
         '',
         ...grounding(run, slice, 'builder'),
@@ -467,7 +468,7 @@ export const SLICE_STEPS = {
         'Change only what the outcome needs. Report what you wrote and why. Do not commit.',
       ]);
       return [
-        `${ctx.models.dispatch('builder', slice)} with the brief in ${brief}.`,
+        `${ctx.models.dispatch('builder', brief, slice)}`,
         `Then commit its changes as "feat(${run.key}): ${slice.id}", and record them with the Builder dispatch's agent id.`,
       ];
     },
@@ -493,7 +494,7 @@ export const SLICE_STEPS = {
       const slice = sliceOf(run);
       const at = `${runDirectory(run)}/${attemptDir(run)}`;
       const first = run.slice.survivor;
-      const brief = writeBrief(ctx, run, 'mutant', [
+      const brief = sliceBrief(ctx, run, 'mutant', [
         `# Mutant: ${slice.id} (${run.key}), attempt ${run.slice.attempt}`,
         '',
         `Outcome: ${slice.outcome}`,
@@ -504,6 +505,8 @@ export const SLICE_STEPS = {
         'out. Name it as { "file", "find", "replace" }, where "find" is code (not a comment) the file holds',
         `exactly once at ${run.slice.greenCommit}, in a file the slice changed and did not freeze: ${mutable(ctx, run, slice).join(', ')}.`,
         `Write it to ${at}/mutant.json. Do not read or run the slice's tests, and change nothing else.`,
+        ...(first ? [`Another dispatch named ${described(first)}: name another edit.`] : []),
+        ...(run.slice.lastMutant ? [`The last mutant (${run.slice.lastMutant}) did not count: yours must compile.`] : []),
       ]);
       return [
         ...(first
@@ -513,9 +516,7 @@ export const SLICE_STEPS = {
               `${run.practices.review ? "slice's review" : 'description, unreviewed,'} and nothing is spent; if it survives too, the slice goes back to ${maker(run, 'red') === 'red' ? 'red' : 'the Builder'}.`,
             ]
           : []),
-        `${ctx.models.dispatch('mutant')}, ${noAuthor(run)}${first ? ', the one that named the first mutant among them' : ''}, with the brief in ${brief}.`,
-        ...(first ? [`Tell it another dispatch named ${described(first)}: it must name another edit.`] : []),
-        ...(run.slice.lastMutant ? [`Tell it the last mutant (${run.slice.lastMutant}) did not count: it must compile.`] : []),
+        `${ctx.models.dispatch('mutant', brief)}, ${noAuthor(run)}${first ? ', the one that named the first mutant among them' : ''}.`,
         "Then record its mutant with the Mutant dispatch's agent id.",
       ];
     },

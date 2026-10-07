@@ -16,6 +16,7 @@ every command with its own path:
 | - | - |
 | `wake` | what a fire runs, the fire's JSON on stdin: has F checked out, then admits a run, continues it, resumes it, opens a new cycle, or ends |
 | `record <KEY> <what> [value]` | records the evidence the current step asks for |
+| `record <KEY> replan` | approves `plan.json` over the slices that have not landed, from any step of a slice in flight |
 | `record <KEY> need "<what>"` | stops the run, from any active step |
 | `record <KEY> reject "<why>"` | ends the cycle rejected, from any active step, citing what shows the design or the scaffold wrong |
 | `probe-adversary [model]` | one keyed Adversary request over a synthetic package, to try a key and a model |
@@ -77,24 +78,51 @@ stop's the need, cut at 100 columns; the body is prose for a person, wrapped at 
 
 ## Practices
 
-Every run holds the [foundation](glossary.md), whatever the fire's options say; on it run seven
-practices, each a stage the engine skips when the options turn it off. Each is on unless turned off,
+Every run holds the [foundation](glossary.md), whatever its practices; on it run seven practices,
+each a stage the engine runs only where the routine's environment turns it on
+([`BLUEPRINT_FOREMAN_PRACTICES`](config.md#the-routines-environment)). Each is off unless turned on,
 and the set is pinned at admission, held along every run-state commit, named in the description, and
-a later fire's ignored. Off:
+a later fire's environment ignored. So a routine that sets nothing runs the foundation alone: one
+Builder slice, held by the engine's bounds, locks, replays and final run, then settle. Each practice,
+on and off:
 
-| Practice | Off |
-| - | - |
-| `slices` | the plan adds one slice beyond those that landed, depending on none; no plan gate |
-| `red-green` | one Builder per slice writes the code and its tests together, and every test must pass; no red, stubs, substitute or red replay, and the frozen set is locked as the slice lands |
-| `mutant` | no mutant: the replays run inside the candidate's record |
-| `review` | no Reviewers or Contract Reviewers: a slice lands once its replays pass, its findings handed off unreviewed, and the rows convergence hands on are handed off unverified |
-| `adversary` | no Adversary, so no plan gate; the final gate holds the other findings |
-| `exhibits` | no promise, no exhibit kept or required, and no Exhibits section |
-| `lessons` | no lesson home or lessons commit, and no Lessons section |
+| Practice | On | Off |
+| - | - | - |
+| `slices` | the plan is a graph of slices, each realizing some scenarios | the plan adds one slice beyond those that landed, depending on none |
+| `red-green` | Red writes failing tests, then a separate Green makes them pass | one Builder per slice writes the code and its tests together, and every test must pass; no red, stubs, substitute or red replay, and the frozen set is locked as the slice lands |
+| `mutant` | a fresh Mutant names a defect the slice's tests must catch | no mutant: the replays run inside the candidate's record |
+| `review` | Reviewers on the slice's diff, a Contract Reviewer on each slice and at the final gate | a slice lands once its replays pass, its findings handed off unreviewed, and the rows convergence hands on are handed off unverified |
+| `adversary` | another model family attacks the plan and the final change | no Adversary; the final gate holds the other findings |
+| `exhibits` | each slice promises an exhibit its proof run writes | no promise, no exhibit kept or required, and no Exhibits section |
+| `lessons` | settle takes one lessons commit | no lesson home or lessons commit, and no Lessons section |
 
-A plan declares none of the fields only a practice the run has off reads. With review and adversary
-both off, the final gate is no step: its round closes inside the record that reached it, on the final
-run's findings.
+A plan declares none of the fields only a practice the run has off reads.
+
+### How practices depend on one another
+
+The engine admits every combination; none is refused, and none turns another on. Where one practice's
+stage needs another's, it runs only with both, and otherwise falls back to the foundation:
+
+| Where | Needs | Without it |
+| - | - | - |
+| the plan gate | `slices` and `adversary` | no plan gate: with one slice there is no slicing to attack, and with no Adversary no one attacks it |
+| a substitute slice | `red-green` | no substitute: a Builder's tests must pass anyway, so a slice with no red needs none |
+| the final gate as a step | `review` or `adversary` | its round closes inside the record that reached it, on the final run's findings alone |
+| judging an exhibit | `exhibits` and `review` | with review off, exhibits are still written, kept and linked, but no Contract Reviewer judges them against their promise |
+| the rows ids cannot show | `review` | handed off to the description as unverified |
+| an equivalent mutant's finding | `mutant` and `review` | with review off, handed off to the description unreviewed |
+
+Combinations worth knowing:
+
+- **Nothing on**, the default: one Builder slice; the engine's bounds, locks, replays, final run and
+  convergence are the only judges, and what they find reaches the final gate's findings, fixed by a
+  slice or handed off.
+- **`adversary` without `slices`**: no plan gate, but the final gate's Adversary attacks the change.
+- **`exhibits` without `review`**: the description links exhibits no one judged.
+- **`mutant` without `red-green`**: the Mutant judges the Builder's tests, and may not be the
+  Builder.
+- **`review` without `red-green`**: the Contract Reviewer judges the Builder's tests and code
+  together, with no red replay among its evidence.
 
 ## The lock
 
@@ -175,6 +203,8 @@ table names another. Next is the first stage the run's practices hold.
 | slice-dispositions | `dispositions` | nothing | [land] |
 | [land] | | | the next slice, or [the final run], then the final gate |
 | settle | `notes`, from `pr-notes.md` | the lesson homes, in at most one commit | settled, with the description written |
+| replan | `replan`, from `plan.json` | nothing since the slice's base, its code restored first | the next slice, from the slice's base; with none left, [the final run], then the final gate |
+| any step of a slice in flight | `replan`, as at the replan step | as at the replan step | as from the replan step |
 | any active step | `need "<what>"` | | stopped |
 | any active step | `reject "<why>"` | | rejected |
 
@@ -207,7 +237,24 @@ of them on a newer scaffold.
 - **Substitute.** A slice with no red (a refactor, configuration, UI, docs) declares the broken state
   its tests must fail on instead, and why.
 - **Budget.** Three attempts per slice. Each failed try prints the restore to where the retry starts,
-  and the next brief says why the attempt was spent. An empty budget stops the run.
+  and the next brief says why the attempt was spent. An empty budget goes to the replan, the slice's
+  code restored to its base; with no replan left in the cycle, it stops the run.
+
+## The replan
+
+The plan is the session's, so a plan that does not pan out is the session's to change. From any step
+of a slice in flight, or at the replan step an empty budget leads to, the session rewrites `plan.json`
+and records `replan`. The engine first holds the code to the slice's base, refusing with the restore
+while it differs, then approves the plan as the plan step does: every landed slice unchanged, every
+criterion realized, only the fields the run's practices read, and something changed. The slice in
+flight is dropped, its evidence left in the run directory, and the next slice starts fresh. A replan
+may rewrite the slice in flight under the same id, split it, fold it into another, or make it a
+substitute where what it tests already holds. No gate attacks a replan; the final gate attacks the
+whole change. Each cycle has three replans, every step of a slice shows what is left, and once they
+are spent a replan is refused and an empty budget stops the run.
+
+So a person is called in only for what no plan reaches: a need, information the run cannot get or an
+effect it may not perform, or a rejection, a design or scaffold only a new one puts right.
 
 ## Roles
 
@@ -217,12 +264,14 @@ of them on a newer scaffold.
 | Mutant, Reviewer, Contract Reviewer | name the mutant, review a group, judge a slice or the whole change | the strongest Claude model |
 | Adversary | attacks the plan and the final change | another family, over OpenRouter; else a Claude subagent |
 
-The configuration and the fire's options may name another model for any role. The engine refuses a
+The routine's environment may name another model for any role. Every subagent's prompt is one line
+naming its brief, which the engine writes to the run directory's `briefs/` with the containment rule
+and every answer given, so the session passes on whole what each was told. The engine refuses a
 green from the slice's Red, and a mutant or a contract verdict from any of the run's authors. Every
 reviewer only proposes findings, and none edits or approves.
 
 With `OPENROUTER_API_KEY` set, the engine sends a gate's request itself, to the Adversary's model, for
-at most ten minutes, routed with `require_parameters` and, unless the settings turn it off, `zdr`, so
+at most ten minutes, routed with `require_parameters` and, unless the environment turns it off, `zdr`, so
 only zero-data-retention endpoints see the package. Without a key, or when the request fails or its
 findings are out of form, a Claude subagent is the Adversary, with the same prompt and package. The
 route is pinned at admission, and a gate recorded in an environment that gives another is refused.

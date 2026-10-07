@@ -4,18 +4,18 @@
 // first, the files frozen at red, the product files Red may stub, what the mutant must break, and the
 // exhibit its proof run must produce. A practice the run has off reads none of its fields, so the plan
 // declares none of them, and with slices off the plan holds one slice. Once a step approves it, the plan
-// lives in the run's record, so a later edit to plan.json changes nothing until the plan step or a
-// gate's dispositions approve it again.
+// lives in the run's record, so a later edit to plan.json changes nothing until the plan step, a gate's
+// dispositions or a replan approve it again. The plan is the session's own: where a slice does not pan
+// out, the session replans what has not landed, within a budget of replans per cycle.
 
-import { ENGINE, EXHIBITS_VARIABLE, GAP_MARKER, isProtected } from './config.mjs';
+import { ALL_PRACTICES, ENGINE, EXHIBITS_VARIABLE, GAP_MARKER, isProtected } from './config.mjs';
 import { criterionKeys, designAt } from './design.mjs';
 import { isRelativePath, within } from './git.mjs';
-import { practicesOf } from './payload.mjs';
 import { readRunJson, runDirectory, same } from './run.mjs';
 
 // The plan's form as the plan step shows it, with none of the fields only a practice the run has off
 // reads.
-export function planTemplate(on = practicesOf()) {
+export function planTemplate(on = ALL_PRACTICES) {
   const test = [
     '"suite": "<the name of a suite the adapters declare in .blueprint-foreman.json>"',
     `"files": ["<this slice's test files, repository-relative, under the suite's cwd and in the frozen set>"]`,
@@ -77,7 +77,7 @@ function testProblems(s, label, suites) {
 
 // Returns the problems found; an empty list means the plan can be worked slice by slice. `suites` are
 // the suites the adapters declare, `protect` the protected paths, and `on` the run's practices.
-export function checkPlan(plan, criterionKeys, suites, protect = [], on = practicesOf()) {
+export function checkPlan(plan, criterionKeys, suites, protect = [], on = ALL_PRACTICES) {
   const problems = [];
   const slices = Array.isArray(plan?.slices) ? plan.slices : null;
   if (!slices || slices.length === 0) return ['plan.json needs a non-empty "slices" list'];
@@ -193,7 +193,51 @@ export function freshSlice(slice, base, budget) {
   return { id: slice.id, base, budget, attempt: 1 };
 }
 
+// The steps of a slice in flight, from which the session may replan, and the step a slice whose
+// attempts are spent goes to while replans are left.
+export const REPLANNABLE = ['red', 'green', 'builder', 'mutant', 'group-review', 'contract-review', 'slice-dispositions', 'replan'];
+
+// The replans the cycle has left: its budget, less those its history holds.
+export const replansLeft = (ctx, run) => ctx.config.replans - (run.history ?? []).filter((h) => h.what === 'replan').length;
+
+// A replan: plan.json approved over the run's plan, its landed slices unchanged and every criterion
+// still realized, with the slice in flight dropped and its code, restored to the slice's base first,
+// left behind, and the next slice started fresh from there. No gate attacks a replan: the final gate
+// attacks the whole change.
+export function replan(run, ctx) {
+  const left = replansLeft(ctx, run);
+  if (left <= 0) return { refused: [`the cycle has used its ${ctx.config.replans} replans; stop instead: ${ENGINE} record ${run.key} need "<what>"`] };
+  const plan = readPlan(ctx.root, run);
+  const problems = checkApproval(plan, run, criterionKeys(designAt(ctx.git, run)));
+  if (same(plan, run.plan)) problems.push('plan.json is the plan the run already holds: a replan changes the slices that have not landed');
+  if (problems.length) return { refused: problems };
+  return { onward: 'slice', extra: { plan, landed: run.landed ?? [], slice: null, accepted: run.slice.base } };
+}
+
+// The lines every step of a slice in flight prints, beside the stop and the rejection.
+export const replanLine = (run, ctx) =>
+  `If the plan does not pan out, it is yours to change: rewrite plan.json for the slices that have not landed and replan (${replansLeft(ctx, run)} left this cycle), which drops the slice in flight: ${ENGINE} record ${run.key} replan`;
+
 export const PLAN_STEPS = {
+  replan: {
+    title: 'replan the slices that have not landed',
+    records: 'replan',
+    instruct: (run) => [
+      `Slice "${run.slice.id}" used all its attempts, and its code is restored to where it began (${run.slice.base}). The last attempt was spent because:`,
+      ...(run.slice.spent?.reasons ?? []).map((r) => `  - ${r.replace(/\n/g, '\n    ')}`),
+      '',
+      `The plan is yours: rewrite ${runDirectory(run)}/plan.json for the slices that have not landed, so the work goes on. Rewrite`,
+      'this slice, split it, fold it into another, or, where what it tests already holds, make it a substitute,',
+      'whose tests pass as they are and fail on its broken state. Slices that landed stay unchanged, and every',
+      "criterion stays realized. Stop with a need only for what no plan reaches: information or an effect the",
+      'run may not perform.',
+    ],
+    record: (run) => `${ENGINE} record ${run.key} replan`,
+    // The slice's code goes back to where it began before the plan changes.
+    bounds: (run) => ({ from: run.slice.base }),
+    accept: (run, ctx) => replan(run, ctx),
+  },
+
   plan: {
     title: 'plan the slices',
     records: 'plan',

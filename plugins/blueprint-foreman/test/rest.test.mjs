@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 import { ENGINE } from '../lib/config.mjs';
-import { KEY, BRANCH, ITEM_BRANCH, PAYLOAD, moveB, redesign, DESIGN, TEST_FILE, SLICE, SCAFFOLD, SCAFFOLDED, FAREWELL, GREEN_CODE, NOTES, allMet, fixture, ok, refused, walk, shell, restore, commitRun, mergeDefault, settled, exhibit, answer, fire, GREET_ROW, proposes } from './fixture.mjs';
+import { KEY, BRANCH, ITEM_BRANCH, PAYLOAD, moveB, redesign, DESIGN, TEST_FILE, SLICE, SCAFFOLD, SCAFFOLDED, FAREWELL, GREEN_CODE, NOTES, allMet, briefed, fixture, ok, refused, walk, shell, restore, commitRun, mergeDefault, settled, exhibit, answer, fire, GREET_ROW, proposes } from './fixture.mjs';
 
 test('a stopped run resumes at a fire carrying its answer, the answer in every step and brief for the rest of its cycle', async () => {
   const f = fixture();
@@ -45,6 +45,7 @@ test('a stopped run resumes at a fire carrying its answer, the answer in every s
 
 test('a run stopped on its budget resumes, once answered, with the restore first and a fresh budget', async () => {
   const f = fixture({ install: 'node install.mjs' });
+  f.ctx.config.replans = 0;
   await walk(f, 'red');
   f.write('test/greet.test.mjs', TEST_FILE);
   f.commit('red without a stub', ['test/greet.test.mjs']);
@@ -101,7 +102,7 @@ test('a newer scaffold on B opens a new cycle: B merged in, the run state starte
   // The cycle delivers the new design on top of what the first delivered, and every run-state commit
   // since the first still loads: a new cycle on a newer scaffold follows from the one before.
   const farewell = { ...FAREWELL, dependsOn: [] };
-  assert.match(await walk(f, 'final', { slices: [farewell], commit: true }), /gates\/final-c2-r1\/package\.md/);
+  assert.match(briefed(f, await walk(f, 'final', { slices: [farewell], commit: true })), /gates\/final-c2-r1\/package\.md/);
   assert.match(f.read(`docs/prs/${KEY}/foreman/gates/final-c2-r1/package.md`), /- \*\*Two functions\*\*: greet, and farewell beside it\./);
 });
 

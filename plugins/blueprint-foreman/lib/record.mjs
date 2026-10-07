@@ -11,7 +11,7 @@ import { ENGINE, containment } from './config.mjs';
 import { criterionKeys, designAt, eventModel } from './design.mjs';
 import { GATE_STEPS } from './gates.mjs';
 import { heldLines, itemDirectory } from './locks.mjs';
-import { PLAN_STEPS } from './plan.mjs';
+import { PLAN_STEPS, REPLANNABLE, replanLine } from './plan.mjs';
 import { REVIEW_STEPS, logLine } from './review.mjs';
 import { SETTLE_STEPS } from './settle.mjs';
 import { SLICE_STEPS, spend } from './slice.mjs';
@@ -59,6 +59,7 @@ export function describe(run, ctx) {
   const record = step.record(run);
   if (record) lines.push('', `When done, record it: ${record}`);
   if (active(run)) {
+    if (REPLANNABLE.includes(run.step) && run.step !== 'replan') lines.push(replanLine(run, ctx));
     lines.push(`If this step needs information or an effect the run may not perform, stop instead: ${ENGINE} record ${run.key} need "<what>"`);
     lines.push(`If the design or the scaffold is wrong and only a new one puts it right, reject it, citing what shows it: ${ENGINE} record ${run.key} reject "<why>"`);
   }
@@ -158,7 +159,8 @@ export async function record(key, what, value, ctx) {
     saveRun(ctx.root, next);
     return { code: 0, text: `blueprint-foreman ${key} · rejecting\n\n${committing(next)}\n\n${describe(next, ctx)}` };
   }
-  const step = STEPS[run.step];
+  // Any step of a slice in flight may replan what has not landed, as the replan step does.
+  const step = what === 'replan' && REPLANNABLE.includes(run.step) ? STEPS.replan : STEPS[run.step];
   if (what !== step.records) {
     return { code: 1, text: `${refusal(key, [`step ${run.step} records "${step.records ?? 'nothing yet'}", not "${what}"`])}\n\n${describe(run, ctx)}` };
   }
@@ -170,7 +172,7 @@ export async function record(key, what, value, ctx) {
   const outcome = !breach
     ? await accepting(step, run, ctx, value)
     : breach.restore && step.spends
-      ? spend(run, breach.reasons, run.step)
+      ? spend(ctx, run, breach.reasons, run.step)
       : { refused: breach.restore ? [...breach.reasons, restoring(run, bounds.from)] : breach.reasons };
   if (outcome.refused && !outcome.next) return { code: 1, text: `${refusal(key, outcome.refused)}\n\n${describe(run, ctx)}` };
   // The record takes effect and the run moves; a spent attempt is both, its try refused as the run

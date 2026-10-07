@@ -20,7 +20,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { adversaryRoute, probeAdversary } from './adversary.mjs';
 import { mergesSince, restoring, takingOut } from './bounds.mjs';
-import { BLUEPRINT_CONFIG, DEFAULTS, ENGINE, FOREMAN_CONFIG, SCAFFOLD_STATUSES, SCAFFOLD_TRAILER, checkAdapters, isProtected, protectedPaths, scaffoldReport } from './config.mjs';
+import { BLUEPRINT_CONFIG, DEFAULTS, ENGINE, FOREMAN_CONFIG, SCAFFOLD_STATUSES, SCAFFOLD_TRAILER, checkAdapters, fromEnvironment, isProtected, protectedPaths, scaffoldReport } from './config.mjs';
 import { extractIn, missingBefore } from './convergence.mjs';
 import { checkDesign, eventModel } from './design.mjs';
 import { reopenFinal } from './gates.mjs';
@@ -130,12 +130,14 @@ function admission(payload, ctx) {
   };
   const designed = designs(design === null ? [`the branch has no committed ${file}`] : checkDesign(design, key, file));
   const checked = checkAdapters(ctx.git.fileAt('HEAD', BLUEPRINT_CONFIG), ctx.git.fileAt('HEAD', FOREMAN_CONFIG));
-  const { settings } = checked;
+  // What the agent does is the routine's environment's.
+  const environment = fromEnvironment(ctx.env);
   // The design the fire names is where Blueprint's adapter file puts the item's docs.
   const placed = checked.adapters && file !== `${checked.adapters.docsRoot}/${key}/blueprint.md`;
   const adapters = placed ? undefined : checked.adapters;
   const problems = placed ? [`the fire names the design ${file}, but ${BLUEPRINT_CONFIG}'s docsRoot puts ${key}'s at ${checked.adapters.docsRoot}/${key}/blueprint.md`] : checked.problems;
   const reasons = [
+    ...environment.problems,
     ...(Number(String(ctx.node).split('.')[0]) < NODE_MAJOR ? [`the engine runs on Node ${ctx.node}, and needs Node ${NODE_MAJOR} or later`] : []),
     ...(older(version, GIT_VERSION) ? [`git is ${version}, and the commits the engine prints need git ${GIT_VERSION.join('.')} or later`] : []),
     ...(shallow ? ["the checkout is a shallow clone, and admission reads the branch's whole history: clone it in full"] : []),
@@ -195,13 +197,13 @@ function admission(payload, ctx) {
       : [`the extractor (${adapters.extract}) failed at the scaffold commit's parent, the code before the work: ${graphs.before.why}`]),
     ...(graphs.at.graph ? [] : [`the extractor (${adapters.extract}) failed at HEAD: ${graphs.at.why}`]),
   );
-  return reasons.length ? { reasons, rejected } : { facts: { scaffold, adapters, settings, protect, head } };
+  return reasons.length ? { reasons, rejected } : { facts: { scaffold, adapters, practices: environment.practices, settings: environment.settings, protect, head } };
 }
 
 // A branch that carries no run: admitted, at the plan, or signalled rejected or failed by one empty
-// commit. The run records F, B and the design the fire names, and pins the fire's practices, each it
-// does not name on, the models the settings and then the fire's options name, and the gates'
-// Adversary, its route as the routine's environment gives it, so no later fire or environment chooses
+// commit. The run records F, B and the design the fire names, and pins what the routine's environment
+// sets: the practices it turns on, each it does not name off, the models it names over the table, and
+// the gates' Adversary, its route as the environment gives it, so no later fire or environment chooses
 // them. With `previous`, the run F carried until B brought a newer scaffold, a new cycle opens on that
 // scaffold, the same checks admitting it: the run state starts again, keeping only the run's cycle and
 // stop counts and what it pinned, and so does the run directory, but for the calibration log; what
@@ -210,11 +212,11 @@ function admit(payload, ctx, previous) {
   const { key } = payload;
   const { reasons, rejected, facts } = admission(payload, ctx);
   if (reasons) return previous ? redesignRefused(previous, rejected ? 'rejected' : 'failed', reasons, payload.signal) : intake(payload, rejected ? 'rejected' : 'failed', reasons);
-  const models = resolveModels(ctx.models.table, facts.settings, payload.settings);
-  const zdr = payload.settings.adversary?.zeroDataRetention ?? facts.settings.adversary.zeroDataRetention;
+  const models = resolveModels(ctx.models.table, facts.settings);
+  const zdr = facts.settings.adversary.zeroDataRetention;
   const pinning = previous
     ? { cycle: previous.cycle + 1, stops: previous.stops, practices: previous.practices, models: previous.models, adversary: previous.adversary }
-    : { practices: payload.practices, models, adversary: adversaryRoute(ctx.env, models.adversary, zdr) };
+    : { practices: facts.practices, models, adversary: adversaryRoute(ctx.env, models.adversary, zdr) };
   // The signal's key is the fire's, so the cycle's commits speak under the key Blueprint reads now.
   pinning.signal = payload.signal;
   if (previous) clearRunDirectory(ctx.root, previous);
@@ -501,6 +503,7 @@ async function dispatch(argv, ctx) {
     text: [
       `usage: ${ENGINE} wake (the fire on stdin)`,
       `       ${ENGINE} record <KEY> <what> [value]`,
+      `       ${ENGINE} record <KEY> replan`,
       `       ${ENGINE} record <KEY> need "<what>"`,
       `       ${ENGINE} record <KEY> reject "<why>"`,
       `       ${ENGINE} probe-adversary [model]`,

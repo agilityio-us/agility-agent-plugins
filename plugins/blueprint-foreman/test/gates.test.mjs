@@ -7,10 +7,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { askAdversary } from '../lib/adversary.mjs';
+import { containment } from '../lib/config.mjs';
 import { BAR } from '../lib/review.mjs';
 import { run } from '../lib/wake.mjs';
 import { MODEL_TABLE, createModels } from '../lib/models.mjs';
-import { KEY, BRANCH, EXTRACTOR, TEST_FILE, DESIGN, SLICE, FILLED, SCAFFOLDED, FAREWELL, MUTANTS, GREEN_CODE, fixture, ok, refused, walk, restore, commitRun, REVIEW, exhibit, GREETING, NOTES, allMet, settled, answer, DESIGN_FILE, GREET_ROW, proposes } from './fixture.mjs';
+import { KEY, BRANCH, EXTRACTOR, TEST_FILE, DESIGN, SLICE, FILLED, SCAFFOLDED, FAREWELL, MUTANTS, GREEN_CODE, fixture, ok, refused, walk, restore, commitRun, briefed, REVIEW, exhibit, GREETING, NOTES, allMet, settled, answer, DESIGN_FILE, GREET_ROW, proposes } from './fixture.mjs';
 
 // The first cycle's final gate, round 1.
 const FINAL = `docs/prs/${KEY}/foreman/gates/final-c1-r1`;
@@ -43,7 +44,7 @@ test('a scaffolded design goes red, green, replayed, reviewed, converged and lan
   for (const g of JSON.parse(f.read(`${REVIEW}/groups.json`))) f.write(`${REVIEW}/group-${g.id}.findings.json`, '[]');
   assert.match(await step('record', KEY, 'groups'), /step: contract-review/);
   f.write(`${REVIEW}/contract.json`, JSON.stringify({ verdict: 'pass', reasons: [], findings: [] }));
-  assert.match(await step('record', KEY, 'contract', 'agent-reviewer'), /found 0 problem\(s\)[\s\S]*It gives a verdict on every criterion, by\nits key: greets-by-name\.\n[\s\S]*final gate's Adversary/);
+  assert.match(briefed(f, await step('record', KEY, 'contract', 'agent-reviewer')), /found 0 problem\(s\)[\s\S]*final gate's Adversary[\s\S]*Give a verdict on every criterion, by\nits key: greets-by-name\.\n/);
   f.write(`${FINAL}/findings.json`, '[]');
   f.write(`${FINAL}/contract.json`, JSON.stringify(allMet(f, f.runState())));
   assert.match(await step('record', KEY, 'gate', 'agent-reviewer'), /step: settle[\s\S]*pr-notes\.md/);
@@ -68,7 +69,7 @@ test('the final gate finds unrealized design and open gaps, and its Contract Rev
   const f = fixture({ scaffold: true, design });
   // A keyed run, whose final gate's Adversary is asked only once the contract review stands.
   const sent = [];
-  f.ctx.env = { OPENROUTER_API_KEY: 'sk-or-test-secret' };
+  f.ctx.env = { ...f.ctx.env, OPENROUTER_API_KEY: 'sk-or-test-secret' };
   f.ctx.fetch = async (url, init) => {
     sent.push(init);
     return { ok: true, json: async () => ({ provider: 'P', model: 'vendor/model-x', choices: [{ message: { content: '{"findings":[]}' } }] }) };
@@ -80,7 +81,7 @@ test('the final gate finds unrealized design and open gaps, and its Contract Rev
   const line = design.split('\n').findIndex((l) => l.includes('greet_fn_farewell')) + 1;
   assert.match(text, /found 2 problem\(s\)/);
   // What the extractor does not emit goes to the Contract Reviewer by name, and is no finding of the engine's.
-  assert.match(text, new RegExp(`every event model row the graph cannot show, by the name given here:\\n {2}- greet_ui_greeting-card \\(docs/prs/PROJ-1/blueprint\\.md:${line + 1}\\): the extractor does not emit its type, ui\\n`));
+  assert.match(briefed(f, text), new RegExp(`every event model row the graph cannot show, by the name given here:\\n {2}- greet_ui_greeting-card \\(docs/prs/PROJ-1/blueprint\\.md:${line + 1}\\): the extractor does not emit its type, ui\\n`));
   const { convergence } = f.runState();
   assert.deepEqual(convergence.findings, [
     { file: DESIGN_FILE, line, claim: 'greet_fn_farewell is not in the extracted graph, so the code does not realize this propose' },
@@ -188,7 +189,8 @@ test("the final gate's Contract Reviewer is recorded by its agent id, and is non
   f.commit('a green that fails', ['src/greet.mjs']);
   restore(f, refused(await f.engine('record', KEY, 'green', 'agent-green-spent'), /spends an attempt \(2 left\)/));
   const text = await walk(f, 'final');
-  assert.match(text, /none of the run's Red, Green or Mutant subagents, to judge the whole branch[\s\S]*Record the gate with the Contract Reviewer's agent id\.\n[\s\S]*When done, record it: node \S+ record PROJ-1 gate <the Contract Reviewer's agent id>\n/);
+  assert.match(text, /Dispatch a fresh Contract Reviewer \(model claude-opus-5-5\) whose whole prompt is "Follow the brief in docs\/prs\/PROJ-1\/foreman\/briefs\/final-c1-r1-contract\.md\.", none of the run's Red, Green or Mutant subagents\.\nThen record the gate with the Contract Reviewer's agent id\.\n[\s\S]*When done, record it: node \S+ record PROJ-1 gate <the Contract Reviewer's agent id>\n/);
+  assert.match(f.read(`docs/prs/${KEY}/foreman/briefs/final-c1-r1-contract.md`), /^# Contract Reviewer: the final gate \(PROJ-1\), cycle 1, round 1\n\nJudge the whole branch/);
   f.write(`${FINAL}/findings.json`, '[]');
   f.write(`${FINAL}/contract.json`, JSON.stringify(allMet(f, f.runState())));
   refused(await f.engine('record', KEY, 'gate'), /refused\n {2}- record the gate with the Contract Reviewer's agent id\n/);
@@ -228,7 +230,7 @@ test('a final gate whose run state holds no convergence refuses, rather than cra
 
 // Keys a fixture's run for vendor/model-x over OpenRouter, recording the package each request sends.
 function keyed(f, sent) {
-  f.ctx.env = { OPENROUTER_API_KEY: 'sk-or-test-secret' };
+  f.ctx.env = { ...f.ctx.env, OPENROUTER_API_KEY: 'sk-or-test-secret' };
   f.ctx.models = createModels({ ...MODEL_TABLE, adversary: 'vendor/model-x' });
   f.ctx.fetch = async (url, init) => {
     sent.push(JSON.parse(init.body).messages[1].content);
@@ -279,7 +281,7 @@ test("the gates' Adversary is pinned at admission: a record whose environment gi
 test('a keyed gate sends one zero-data-retention request and never logs the key', async () => {
   const f = fixture();
   const sent = [];
-  f.ctx.env = { OPENROUTER_API_KEY: 'sk-or-test-secret' };
+  f.ctx.env = { ...f.ctx.env, OPENROUTER_API_KEY: 'sk-or-test-secret' };
   f.ctx.fetch = async (url, init) => {
     sent.push({ url, body: JSON.parse(init.body), signal: init.signal });
     return { ok: true, json: async () => ({ provider: 'SomeProvider', model: 'vendor/model-x', choices: [{ message: { content: '{"findings":[]}' } }] }) };
@@ -299,11 +301,12 @@ test('a keyed gate sends one zero-data-retention request and never logs the key'
   assert.doesNotMatch(log + out.text, /sk-or-test-secret/);
 });
 
-test("the Adversary's model and its zero data retention come from the harness's settings, pinned at admission, defaulting to the strongest GPT model and on", async () => {
+test("the Adversary's model and its zero data retention come from the routine's environment, pinned at admission, defaulting to the strongest GPT model and on", async () => {
   assert.equal(createModels().pick('adversary'), 'openai/gpt-6-astra');
-  const f = fixture({ foreman: { adversary: { model: 'cheap/model', zeroDataRetention: false }, models: { reviewer: 'claude-x' } } });
+  // The harness's file naming others is ignored: what the agent does is the environment's.
+  const f = fixture({ foreman: { adversary: { model: 'file/model' }, models: { reviewer: 'claude-file' } } });
   const bodies = [];
-  f.ctx.env = { OPENROUTER_API_KEY: 'sk-or-test-secret' };
+  f.ctx.env = { ...f.ctx.env, OPENROUTER_API_KEY: 'sk-or-test-secret', BLUEPRINT_FOREMAN_ADVERSARY_MODEL: 'cheap/model', BLUEPRINT_FOREMAN_ADVERSARY_ZDR: 'false', BLUEPRINT_FOREMAN_MODEL_REVIEWER: 'claude-x' };
   f.ctx.fetch = async (url, init) => {
     bodies.push(JSON.parse(init.body));
     return { ok: true, json: async () => ({ provider: 'P', model: 'cheap/model', choices: [{ message: { content: '{"findings":[]}' } }] }) };
@@ -319,12 +322,15 @@ test("the Adversary's model and its zero data retention come from the harness's 
 
 test('a keyed gate that fails falls back to a Claude adversary', async () => {
   const f = fixture();
-  f.ctx.env = { OPENROUTER_API_KEY: 'sk-or-test-secret' };
+  f.ctx.env = { ...f.ctx.env, OPENROUTER_API_KEY: 'sk-or-test-secret' };
   f.ctx.fetch = async () => ({ ok: false, status: 503 });
   f.ctx.models = createModels({ ...MODEL_TABLE, adversary: 'vendor/model-x' });
   await walk(f, 'gate');
   const text = refused(await f.engine('record', KEY, 'gate'), /OpenRouter answered 503/);
-  assert.match(text, /runs as a Claude subagent[\s\S]*Write its findings, the "findings" list alone, to docs\/prs\/PROJ-1\/foreman\/gates\/plan-c1-r1\/findings\.json as \[ \{ "file"/);
+  assert.match(text, /runs as a Claude subagent[\s\S]*Dispatch a fresh Adversary subagent \(model claude-opus-5-5\) whose whole prompt is "Follow the brief in docs\/prs\/PROJ-1\/foreman\/briefs\/plan-c1-r1-adversary\.md\."/);
+  const brief = f.read(`docs/prs/${KEY}/foreman/briefs/plan-c1-r1-adversary.md`);
+  assert.match(brief, /^# Adversary: the plan gate \(PROJ-1\), cycle 1, round 1\n\nYou are the adversary[\s\S]*The change is in the package docs\/prs\/PROJ-1\/foreman\/gates\/plan-c1-r1\/package\.md[\s\S]*Write your findings, the "findings" list alone, to docs\/prs\/PROJ-1\/foreman\/gates\/plan-c1-r1\/findings\.json as \[ \{ "file"/);
+  assert.ok(brief.trimEnd().endsWith(containment(f.root)), brief);
   assert.doesNotMatch(text, /sk-or-test-secret/);
   assert.match(f.read(`docs/prs/${KEY}/foreman/calibration.log`), /^gate=plan cycle=1 round=1 reviewer=openrouter model=vendor\/model-x provider=- findings=- outcome=failed$/m, 'the failed request is logged');
   // The Adversary answers in an object, but the session writes findings in their one form, a list.
@@ -336,7 +342,7 @@ test('a keyed gate that fails falls back to a Claude adversary', async () => {
 
 test('a keyed gate whose findings cite no place falls back to a Claude adversary', async () => {
   const f = fixture();
-  f.ctx.env = { OPENROUTER_API_KEY: 'sk-or-test-secret' };
+  f.ctx.env = { ...f.ctx.env, OPENROUTER_API_KEY: 'sk-or-test-secret' };
   f.ctx.fetch = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: '{"findings":[{"claim":"vague"}]}' } }] }) });
   f.ctx.models = createModels({ ...MODEL_TABLE, adversary: 'vendor/model-x' });
   await walk(f, 'gate');
@@ -455,7 +461,7 @@ test("a gate finding that asks for more than the design's scenarios is no fix: i
   assert.equal(f.runState().plan.slices[0].outcome, SLICE.outcome, 'the bar stays the design');
   // The slice's Contract Reviewer judges against the scenarios, and passes with a finding for anything else.
   const contract = await walk(f, 'contract-review');
-  assert.ok(contract.includes(`${BAR}\nIt fails the slice only for a scenario of its criteria the change does not meet`), contract);
+  assert.ok(briefed(f, contract).includes(`${BAR}\nFail the slice only for a scenario of its criteria the change does not meet`), contract);
   await settled(f);
   const description = f.read(`docs/prs/${KEY}/pull-request.md`);
   assert.ok(description.includes(`## Handed-off findings\n\n- gates/plan-c1-r1 #1, src/greet.mjs:1: ${claim} (${question})\n`), description);

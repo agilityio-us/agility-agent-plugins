@@ -1,9 +1,10 @@
 // What a run fixes about the repository it delivers into, in one place. The input names come from
 // Blueprint: where the design lives, how the scaffold commit is marked and its gaps written, and
 // Blueprint's adapter file, which gives the extractor. The harness's own file gives the rest, whose
-// shape is checked here: the install, the suites, what the extractor emits and its own paths, the
-// lesson homes, and the settings a fire may override. The settings below them a run needs that
-// neither file carries; tests override those.
+// shape is checked here: the install, the suites, what the extractor emits and its own paths, and the
+// lesson homes. What the agent does, its practices, its models and its Adversary, is the routine's
+// environment's, read here too. The settings below them a run needs that neither carries; tests
+// override those.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -61,6 +62,7 @@ export const EXHIBITS_VARIABLE = 'BLUEPRINT_FOREMAN_EXHIBITS';
 export const DEFAULTS = {
   testTimeoutMs: 20 * 60 * 1000,
   budget: 3,
+  replans: 3,
 };
 
 const REPORTS = ['jest', 'junit'];
@@ -101,25 +103,42 @@ export function docsRootAt(root) {
   }
 }
 
-// The roles whose model the settings may name, and the Adversary's own fields.
-export const MODEL_ROLES = ['broad', 'contained', 'reviewer', 'adversary-fallback'];
-const ADVERSARY_FIELDS = ['model', 'zeroDataRetention'];
+// The practices a run may hold, each a stage the engine runs only where the environment turns it on.
+export const PRACTICES = ['slices', 'red-green', 'mutant', 'review', 'adversary', 'exhibits', 'lessons'];
+// Every practice, each as `named` gives it or off where it names none.
+export const practicesOf = (named = {}) => Object.fromEntries(PRACTICES.map((p) => [p, named[p] ?? false]));
+export const ALL_PRACTICES = practicesOf(Object.fromEntries(PRACTICES.map((p) => [p, true])));
 
-// The problems with the settings a fire may override, as `at` names where they are: `models`, a model
-// per role, and `adversary`, its model and whether its requests may reach only zero-data-retention
-// endpoints.
-export function settingsProblems({ models, adversary } = {}, at = '') {
+// The roles whose model the environment may name.
+export const MODEL_ROLES = ['broad', 'contained', 'reviewer', 'adversary-fallback'];
+// Every variable of the routine's environment that steers the agent, read once, at admission, and
+// pinned with the run: a later fire's environment changes nothing but the Adversary's route, which a
+// gate holds to the pinned one.
+export const VARIABLES = {
+  practices: 'BLUEPRINT_FOREMAN_PRACTICES',
+  models: Object.fromEntries(MODEL_ROLES.map((r) => [r, `BLUEPRINT_FOREMAN_MODEL_${r.toUpperCase().replaceAll('-', '_')}`])),
+  adversaryModel: 'BLUEPRINT_FOREMAN_ADVERSARY_MODEL',
+  zeroDataRetention: 'BLUEPRINT_FOREMAN_ADVERSARY_ZDR',
+};
+
+// What the environment `env` sets for the agent: the practices it turns on, every one with "all" and
+// none where it names none; a model per role it names; the Adversary's model and whether its requests
+// may reach only zero-data-retention endpoints. Or the problems, each naming its variable, which fail
+// the fire.
+export function fromEnvironment(env = {}) {
   const problems = [];
-  if (models !== undefined && !(record(models) && Object.entries(models).every(([role, model]) => MODEL_ROLES.includes(role) && text(model)))) {
-    problems.push(`${at}models must map roles (${MODEL_ROLES.join(', ')}) to model ids`);
-  }
-  if (adversary !== undefined) {
-    const shaped = record(adversary) && Object.keys(adversary).every((k) => ADVERSARY_FIELDS.includes(k));
-    if (!shaped || (adversary.model !== undefined && !text(adversary.model)) || (adversary.zeroDataRetention !== undefined && typeof adversary.zeroDataRetention !== 'boolean')) {
-      problems.push(`${at}adversary must be { model?, zeroDataRetention? }: a model id, and true or false`);
-    }
-  }
-  return problems;
+  const value = (name) => (typeof env[name] === 'string' ? env[name].trim() : '');
+  const listed = value(VARIABLES.practices).split(/[\s,]+/).filter(Boolean);
+  const unknown = listed.filter((p) => p !== 'all' && !PRACTICES.includes(p));
+  if (unknown.length) problems.push(`${VARIABLES.practices} names ${unknown.map((p) => `"${p}"`).join(', ')}, not a practice: list any of ${PRACTICES.join(', ')}, or "all"`);
+  const practices = listed.includes('all') ? { ...ALL_PRACTICES } : practicesOf(Object.fromEntries(listed.map((p) => [p, true])));
+  const models = Object.fromEntries(MODEL_ROLES.filter((r) => value(VARIABLES.models[r])).map((r) => [r, value(VARIABLES.models[r])]));
+  const adversary = {};
+  if (value(VARIABLES.adversaryModel)) adversary.model = value(VARIABLES.adversaryModel);
+  const zdr = value(VARIABLES.zeroDataRetention);
+  if (zdr && !['true', 'false'].includes(zdr)) problems.push(`${VARIABLES.zeroDataRetention} is "${zdr}", and must be true or false`);
+  else if (zdr) adversary.zeroDataRetention = zdr === 'true';
+  return problems.length ? { problems } : { practices, settings: { models, adversary }, problems };
 }
 
 // A file's text as a JSON object, or the problem: none committed, or not one.
@@ -137,8 +156,9 @@ function parsed(source, file, what) {
 const isTypeWords = (v) => record(v) && Object.values(v).every((w) => typeof w === 'string' && /^[A-Za-z0-9]+$/.test(w));
 
 // The adapters as a commit holds them, `blueprint` the text of Blueprint's file and `foreman` the
-// harness's, each null where there is none: the fields a run reads, in their shape, and the settings a
-// fire may override, or the problems with them. Fields not named here are another tool's, and ignored.
+// harness's, each null where there is none: the fields a run reads, in their shape, or the problems
+// with them. Fields not named here are another tool's, and ignored: what the agent does is the
+// environment's, so models or an Adversary the harness's file names are too.
 export function checkAdapters(blueprint, foreman) {
   const b = parsed(blueprint, BLUEPRINT_CONFIG, 'the extractor');
   const h = parsed(foreman, FOREMAN_CONFIG, "the harness's settings");
@@ -157,7 +177,6 @@ export function checkAdapters(blueprint, foreman) {
     const suites = record(own.suites) ? Object.entries(own.suites) : [];
     if (suites.length === 0) problems.push(`${at}suites must declare at least one suite, keyed by name`);
     for (const [name, s] of suites) problems.push(...suiteProblems(name, s).map((p) => `${at}${p}`));
-    problems.push(...settingsProblems(own, at));
   }
   if (problems.length) return { problems };
   const pick = (s) => Object.fromEntries(['command', 'all', 'report', 'cwd', 'env', 'timeout'].filter((k) => s[k] !== undefined).map((k) => [k, s[k]]));
@@ -172,7 +191,6 @@ export function checkAdapters(blueprint, foreman) {
       suites: Object.fromEntries(Object.entries(own.suites).map(([name, s]) => [name, pick(s)])),
       lessonHomes: own.lessonHomes ?? DEFAULT_LESSON_HOMES,
     },
-    settings: { models: own.models ?? {}, adversary: own.adversary ?? {} },
     problems: [],
   };
 }

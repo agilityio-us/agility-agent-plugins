@@ -19,13 +19,16 @@ import { criteria, criterionKeys, designAt } from './design.mjs';
 import { LOCK_RULE } from './locks.mjs';
 import { checkApproval, nextSlice, readPlan } from './plan.mjs';
 import { BAR, ENGINE_RAISED, FINDINGS_FORM, acceptDispositions, checkFindings, dispositionsBrief } from './review.mjs';
-import { authorRefusal, noAuthor, openGate, ownPaths, readRunJson, runDirectory, runFile, same } from './run.mjs';
+import { authorRefusal, noAuthor, openGate, ownPaths, readRunJson, runDirectory, runFile, same, writeBrief } from './run.mjs';
 
 // A round's directory; the final gate opened again after a merge has its own.
 function gateDir(run) {
   const { name, cycle, round, merge } = run.gate;
   return `gates/${name}-c${cycle}${merge ? `-merge-${merge.slice(0, 12)}` : ''}-r${round}`;
 }
+
+// A round's name, as its briefs are named: its directory's, under gates/.
+const gateName = (run) => gateDir(run).slice('gates/'.length);
 
 function gatePath(root, run, file) {
   return runFile(root, run, path.join(gateDir(run), file));
@@ -140,19 +143,20 @@ function finalBrief(ctx, run, pkg) {
   if (!run.practices.review) {
     return [found, ...(handed.length ? ["With the review practice off, no Contract Reviewer judges the event model rows the graph cannot show: the pull request's description hands each on as unverified.", ...rows] : [])];
   }
-  return [
-    found,
-    `${ctx.models.dispatch('contract')}, ${noAuthor(run)}, to judge the whole branch (${run.startCommit}..HEAD) against the design in`,
-    `${pkg}${run.practices.exhibits ? ", and each slice's exhibits against its promise in the plan there" : ''}. It gives a verdict on every criterion, by`,
+  const brief = writeBrief(ctx, run, `${gateName(run)}-contract`, [
+    `# Contract Reviewer: the final gate (${run.key}), cycle ${run.gate.cycle}, round ${run.gate.round}`,
+    '',
+    `Judge the whole branch (${run.startCommit}..HEAD) against the design in`,
+    `${pkg}${run.practices.exhibits ? ", and each slice's exhibits against its promise in the plan there" : ''}. Give a verdict on every criterion, by`,
     `its key: ${criterionKeys(designAt(ctx.git, run)).join(', ')}${handed.length ? '; and on every event model row the graph cannot show, by the name given here:' : '.'}`,
     ...rows,
     BAR,
-    `The locks are the engine's, and its convergence findings carry every break: ${LOCK_RULE} It raises no lock break of its own.`,
-    `It writes ${runDirectory(run)}/${gateDir(run)}/contract.json, proposing findings only, and edits nothing else:`,
+    `The locks are the engine's, and its convergence findings carry every break: ${LOCK_RULE} Raise no lock break of your own.`,
+    `Write ${runDirectory(run)}/${gateDir(run)}/contract.json, proposing findings only, and edit nothing else:`,
     `  ${CONTRACT_FORM}`,
     "An unmet verdict is a finding; the verdicts on the criteria go into the pull request's description.",
-    "Record the gate with the Contract Reviewer's agent id.",
-  ];
+  ]);
+  return [found, `${ctx.models.dispatch('contract', brief)}, ${noAuthor(run)}.`, "Then record the gate with the Contract Reviewer's agent id."];
 }
 
 // An outcome with `more` in the run state it moves to.
@@ -232,11 +236,14 @@ export const GATE_STEPS = {
       return [
         ...before,
         `The ${run.gate.name} gate's Adversary runs as a Claude subagent (${run.gate.fallback ?? route.why}).`,
-        `${ctx.models.dispatch('adversary-fallback')} with these instructions, then the package in ${pkg}:`,
-        '',
-        ...ADVERSARY_PROMPT.split('\n').map((l) => `  ${l}`),
-        '',
-        `Write its findings, the "findings" list alone, to ${dir}/findings.json as ${FINDINGS_FORM}.`,
+        `${ctx.models.dispatch('adversary-fallback', writeBrief(ctx, run, `${gateName(run)}-adversary`, [
+          `# Adversary: the ${run.gate.name} gate (${run.key}), cycle ${run.gate.cycle}, round ${run.gate.round}`,
+          '',
+          ADVERSARY_PROMPT,
+          '',
+          `The change is in the package ${pkg}: read it whole, and the repository where it points.`,
+          `Write your findings, the "findings" list alone, to ${dir}/findings.json as ${FINDINGS_FORM}, and edit nothing else.`,
+        ]))}`,
       ];
     },
     record: (run) => `${ENGINE} record ${run.key} gate${run.gate.name === 'final' && run.practices.review ? " <the Contract Reviewer's agent id>" : ''}`,

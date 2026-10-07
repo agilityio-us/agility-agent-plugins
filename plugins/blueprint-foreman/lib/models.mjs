@@ -1,8 +1,8 @@
 // The one place a model is chosen, and the line that dispatches a subagent on it. Reviewers get the
 // strongest Claude model; Red, Green and the Builder get it for a broad slice and the faster one for a
 // contained slice. The Adversary comes from another family through OpenRouter, defaulting to the
-// strongest GPT model with zero-data-retention endpoints. The harness's settings may name another
-// model for any role, and a fire's options may too; the table is pinned as the run is admitted.
+// strongest GPT model with zero-data-retention endpoints. The routine's environment may name another
+// model for any role; the table is pinned as the run is admitted.
 
 const DEFAULT_ADVERSARY = 'openai/gpt-6-astra';
 
@@ -42,11 +42,11 @@ export function createModels(table = MODEL_TABLE) {
   return {
     table: resolved,
     pick,
-    // The line that dispatches a subagent: always a fresh one, on its role's model; the caller says
-    // what it is given.
-    dispatch(role, slice) {
+    // The line that dispatches a subagent: always a fresh one, on its role's model, its whole prompt the
+    // one line naming its brief, which the engine writes; the caller says who it may not be.
+    dispatch(role, brief, slice) {
       const [name, model] = SUBAGENTS[role];
-      return `Dispatch a fresh ${name} (model ${pick(model, slice)})`;
+      return `Dispatch a fresh ${name} (model ${pick(model, slice)}) whose whole prompt is "Follow the brief in ${brief}."`;
     },
   };
 }

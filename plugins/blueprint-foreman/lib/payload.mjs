@@ -1,11 +1,12 @@
 // The fire: the JSON object Specification v1 gives a routine's fire, naming the item's key, Blueprint's
 // branch for it, B, the agent's own, F, the design to read, the trailer key to signal under, an answer
-// to the last stop, and the harness's own options. The engine validates it against
+// to the last stop, and options Blueprint passes through, which this harness ignores: what the agent
+// does is the routine's environment's (config.mjs). The engine validates it against
 // payload.schema.json by reading that file itself, so the two cannot drift: the validator interprets
 // every keyword the schema uses and refuses a schema using any other.
 
 import fs from 'node:fs';
-import { ENGINE, settingsProblems } from './config.mjs';
+import { ENGINE } from './config.mjs';
 import { isRelativePath, quote } from './git.mjs';
 
 export const SCHEMA_FILE = 'payload.schema.json';
@@ -53,12 +54,6 @@ export const SCHEMA = checkSchema(JSON.parse(fs.readFileSync(new URL('../payload
 // An item's key, as the schema takes it: what `record` reads as one.
 export const KEY_PATTERN = new RegExp(SCHEMA.properties.key.pattern, 'u');
 
-// The practices a fire may turn off, as the schema names them.
-export const PRACTICES = Object.keys(SCHEMA.properties.options.properties.practices.properties);
-
-// Every practice, each as `named` gives it or on where it names none.
-export const practicesOf = (named = {}) => Object.fromEntries(PRACTICES.map((p) => [p, named[p] ?? true]));
-
 const named = (at, name) => (/^[A-Za-z0-9_-]+$/.test(name) ? `${at}.${name}` : `${at}[${JSON.stringify(name)}]`);
 const article = (type) => (['object', 'integer'].includes(type) ? 'an' : 'a');
 
@@ -82,9 +77,8 @@ export function validate(schema, value, at = 'fire') {
 
 // What the fire's text says: { unreadable }, its reasons, where it names no key or branches the
 // engine can read, so the fire has nowhere to write; else the fire, its key, B, F, the design, the
-// signal's key and the answer, and either the practices, each the fire's or on where it names none,
-// and the settings its options override, or the problems, where it falls short of the schema
-// otherwise, which the fire signals failed.
+// signal's key and the answer, and the problems, where it falls short of the schema otherwise, which
+// the fire signals failed.
 export function readPayload(text) {
   if (!text?.trim()) return { unreadable: ['no fire came on stdin'] };
   let value;
@@ -102,10 +96,7 @@ export function readPayload(text) {
   const found = { value, key: value.key, branch: value.branch, runBranch: value.agentBranch, design: value.design, signal: value.signal, answer: value.answer ?? null };
   const own = [...said(problems)];
   if (!own.length && !(isRelativePath(value.design) && value.design.endsWith(`/${value.key}/blueprint.md`))) own.push(`fire.design is ${JSON.stringify(value.design)}, not <docsRoot>/${value.key}/blueprint.md`);
-  if (!own.length) own.push(...settingsProblems(value.options, 'fire.options.'));
-  if (own.length) return { ...found, problems: own };
-  const { practices, ...settings } = value.options ?? {};
-  return { ...found, practices: practicesOf(practices), settings, problems: [] };
+  return { ...found, problems: own };
 }
 
 // The wake a session runs, `fire` on stdin.

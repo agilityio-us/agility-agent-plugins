@@ -6,12 +6,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
-import { PLUGIN_DIR, containment } from '../lib/config.mjs';
+import { ALL_PRACTICES, PLUGIN_DIR, containment } from '../lib/config.mjs';
 import { createGit } from '../lib/git.mjs';
 import { checkApproval, checkPlan, nextSlice } from '../lib/plan.mjs';
 import { checkLock } from '../lib/locks.mjs';
 import { exhibitsIn } from '../lib/slice.mjs';
-import { practicesOf } from '../lib/payload.mjs';
 import { KEY, TEST_FILE, SLICE, SCAFFOLD, FILLED, SCAFFOLDED, FAREWELL_TEST, FAREWELL, FAREWELL_STUB, FAREWELL_CODE, MUTANTS, RED_STUB, GREEN_CODE, SUITES, ACTS, fixture, ok, refused, walk, restore, exhibit, scratchDir, GREETING, answer, fire } from './fixture.mjs';
 
 test('the plan check refuses each gap, one field at a time, before any slice starts', () => {
@@ -83,7 +82,7 @@ test('the next slice is the first whose dependencies landed, and an amended plan
   assert.equal(nextSlice(farewellFirst, []).id, 'greet-by-name');
   assert.equal(nextSlice(farewellFirst, ['greet-by-name']).id, 'say-farewell');
   assert.equal(nextSlice(farewellFirst, ['greet-by-name', 'say-farewell']), null);
-  const run = { practices: practicesOf(), adapters: { suites: SUITES }, protect: [], landed: ['greet-by-name'], plan: farewellFirst };
+  const run = { practices: ALL_PRACTICES, adapters: { suites: SUITES }, protect: [], landed: ['greet-by-name'], plan: farewellFirst };
   assert.deepEqual(checkApproval(farewellFirst, run, ['greets-by-name']), []);
   for (const plan of [{ slices: [{ ...FAREWELL, dependsOn: [] }] }, { slices: [{ ...SLICE, outcome: 'greet says hello' }, FAREWELL] }]) {
     assert.match(checkApproval(plan, run, ['greets-by-name']).join('\n'), /slice "greet-by-name" has landed, so the plan may not change or drop it/, JSON.stringify(plan));
@@ -276,8 +275,9 @@ test('an exhibit is a regular file with something in it, and a directory not the
   assert.deepEqual(exhibitsIn(root, dir), [`docs/prs/${KEY}/foreman/exhibits/a/said.txt`, `docs/prs/${KEY}/foreman/exhibits/a/shots/one.png`]);
 });
 
-test('an exhausted budget stops the run', async () => {
+test('an exhausted budget, with no replan left in the cycle, stops the run', async () => {
   const f = fixture();
+  f.ctx.config.replans = 0;
   await walk(f, 'red');
   f.write('test/greet.test.mjs', TEST_FILE);
   f.commit('red without a stub', ['test/greet.test.mjs']);
@@ -430,7 +430,13 @@ test('the skill, every step and every brief the engine writes keep the work insi
   // Every brief the engine wrote carries it too.
   const dir = path.join(f.root, 'docs', 'prs', KEY, 'foreman', 'briefs');
   const briefs = fs.readdirSync(dir);
-  assert.deepEqual(briefs.map((b) => b.replace(/^greet-by-name-|-1\.md$/g, '')).sort(), ['green', 'mutant', 'red']);
+  // Every role's, each reviewer's and gate's among them, so the session passes each on whole.
+  assert.deepEqual(briefs.sort(), ['final-c1-r1-adversary.md', 'final-c1-r1-contract.md', 'greet-by-name-contract-1.md', 'greet-by-name-green-1.md', 'greet-by-name-mutant-1.md', 'greet-by-name-red-1.md', 'greet-by-name-reviewer-1-1.md', 'plan-c1-r1-adversary.md']);
+  // Each dispatch names its brief as the whole prompt, and the brief it names is there.
+  for (const text of steps) {
+    for (const [, brief] of text.matchAll(/whose whole prompt is "Follow the brief in ([^"]+)\."/g)) assert.ok(fs.existsSync(path.join(f.root, brief)), brief);
+  }
+  assert.equal(steps.flatMap((t) => [...t.matchAll(/Dispatch a fresh /g)]).length, steps.flatMap((t) => [...t.matchAll(/whose whole prompt is "Follow the brief in /g)]).length, 'every dispatch names a brief');
   for (const b of briefs) assert.ok(fs.readFileSync(path.join(dir, b), 'utf8').trimEnd().endsWith(rule), b);
   // And the skill states it for the session.
   assert.match(fs.readFileSync(new URL('../skills/blueprint-foreman/SKILL.md', import.meta.url), 'utf8'), /Work stays inside those two clones: read and search nothing outside them, and run every command from\nthe repository's root\./);

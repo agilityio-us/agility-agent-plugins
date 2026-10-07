@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { PRACTICES } from '../lib/config.mjs';
 import { criterionKeys } from '../lib/design.mjs';
 import { createGit } from '../lib/git.mjs';
 import { sliceOf } from '../lib/plan.mjs';
@@ -250,7 +251,11 @@ export const settings = ({ protect = [], install = 'exit 0', suites = SUITES, ..
 // An item's branch as Blueprint leaves it, the design committed, then the scaffold, empty unless asked
 // for, and the run's branch cut from its tip, which origin/<item branch> marks. Until a run is admitted
 // a commit on the run's branch is Blueprint's, so that tip follows it. Every fire's payload names the
-// item branch, and `practices` where given; `wake(payload)` wakes with another.
+// item branch; the routine's environment turns on every practice but those `practices` turns off;
+// `wake(payload)` wakes with another fire.
+// The routine's environment that turns on every practice but those `off` names false.
+export const environment = (off = {}) => ({ BLUEPRINT_FOREMAN_PRACTICES: PRACTICES.filter((p) => off[p] !== false).join(',') });
+
 export function fixture({ scaffold = false, design = DESIGN, extractor = EXTRACTOR, protect, install, suites, foreman = {}, practices } = {}) {
   const root = scratchDir('blueprint-foreman-slice-');
   const runJson = path.join(root, 'docs', 'prs', KEY, 'foreman', 'run.json');
@@ -294,14 +299,16 @@ export function fixture({ scaffold = false, design = DESIGN, extractor = EXTRACT
   commit(`chore(${KEY}): scaffold the agreed design`, [SCAFFOLD_REPORT, ...(scaffold ? ['src/greet.mjs'] : [])], `Blueprint-Scaffold: ${KEY}`);
   tip();
   const git = createGit(root);
-  const input = practices ? fire({ options: { practices } }) : PAYLOAD;
-  const ctx = { root, git, now: () => '2026-09-26T00:00:00.000Z', config: { testTimeoutMs: 60_000 }, env: {}, fetch: noNetwork, input };
+  const ctx = { root, git, now: () => '2026-09-26T00:00:00.000Z', config: { testTimeoutMs: 60_000 }, env: environment(practices), fetch: noNetwork, input: PAYLOAD };
   const engine = (...argv) => run(argv, ctx);
   const wake = (payload) => run(['wake'], { ...ctx, input: typeof payload === 'string' ? payload : JSON.stringify(payload) });
   const runState = () => JSON.parse(fs.readFileSync(runJson, 'utf8'));
   const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
   return { root, ctx, engine, wake, write, commit, runState, hasRun: () => fs.existsSync(runJson), read, sh: (...a) => sh(root, ...a) };
 }
+
+// A step's text followed by each brief its dispatches name, as the subagents read them.
+export const briefed = (f, text) => [text, ...[...text.matchAll(/whose whole prompt is "Follow the brief in ([^"]+)\."/g)].map(([, brief]) => f.read(brief))].join('\n');
 
 export async function ok(f, ...argv) {
   const out = await f.engine(...argv);

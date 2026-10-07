@@ -25,9 +25,11 @@ is one agent that meets it.
 
 - **Environment**: Node 18 or later and git 2.32 or later on the path, and `sh`; network to the
   package registries the install uses, and to `openrouter.ai` for the Adversary; no permission
-  prompts, since no one is there to answer them. `OPENROUTER_API_KEY`, when set, sends the gates'
-  Adversary to another model family, restricted to zero-data-retention endpoints unless the settings
-  turn that off; without it a Claude subagent stands in. Set whatever turns off the repository's own
+  prompts, since no one is there to answer them. Every variable that steers the agent is set here:
+  `BLUEPRINT_FOREMAN_PRACTICES` turns practices on, every one off unless named (`all` for every
+  one); others name the models and the Adversary, and `OPENROUTER_API_KEY` sends the gates'
+  Adversary to another model family, a Claude subagent standing in without it. See [the
+  configuration](docs/config.md#the-routines-environment). Set whatever turns off the repository's own
   commit hooks for CI, if it has any, since every commit the engine prints must go through as printed.
 - **The item's repository** holds Blueprint's `.blueprint.config.json` (the extractor, and where the
   items' docs live) and the harness's own `.blueprint-foreman.json` (the install, the suites, what
@@ -38,7 +40,7 @@ is one agent that meets it.
 - [How it works](docs/how-it-works.md): the practices, the steps, the roles, what the skill does and
   what the engine enforces, and what it cannot check.
 - [Configuration](docs/config.md): `.blueprint-foreman.json`, the fields it reads of
-  `.blueprint.config.json`, and the fire's options.
+  `.blueprint.config.json`, and the routine's environment.
 - [Terms](docs/glossary.md): every term, once.
 
 The engine's tests are its executable specification, Node's runner and nothing else:

@@ -313,7 +313,7 @@ test("a run state changes only by the records that change it: its history, the p
   const frozenOff = { slices: honest.plan.slices.map((s) => ({ ...s, frozen: ['run-tests.mjs'] })) };
   await held(honest, [
     [{ history: honest.history.slice(1) }, 'its history lost or changed an entry'],
-    [{ plan: frozenOff }, "its plan changed, which only a plan record or a gate's dispositions change"],
+    [{ plan: frozenOff }, "its plan changed, which only a plan record, a gate's dispositions or a replan change"],
   ]);
   await walk(f, 'green', { commit: true });
   honest = f.runState();

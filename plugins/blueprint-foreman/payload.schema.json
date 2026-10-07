@@ -48,66 +48,8 @@
       "type": ["string", "null"]
     },
     "options": {
-      "description": "The harness's own options for this agent, which Blueprint passes through untouched. A run takes them at admission and keeps them: a later fire's are ignored.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "practices": {
-          "description": "The practices the run holds, each true (on) or false (off). A practice not named is on. Turning one off never loosens what every run holds: admission, the scaffold's lock and gaps, convergence with the design, and the run's own record.",
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "slices": {
-              "description": "The run plans the work as slices, each realizing some of the design's scenarios, and the plan gate attacks the plan. Off: the plan holds one slice, which realizes every scenario, and no plan gate attacks it.",
-              "type": "boolean"
-            },
-            "red-green": {
-              "description": "Each slice's tests are written first and must fail on an assertion (red), then a separate subagent's code makes them pass (green). Off: one Builder per slice writes the code and its tests, and the tests must pass.",
-              "type": "boolean"
-            },
-            "mutant": {
-              "description": "After green, a fresh subagent that has not read the tests names one small edit to the code, and the slice's tests must fail on it. Off: no mutant.",
-              "type": "boolean"
-            },
-            "review": {
-              "description": "Before a slice lands, Reviewers review its diff in groups and a Contract Reviewer judges it against the design's scenarios. Off: no Reviewers and no Contract Reviewers; a slice lands once its replays pass, and the description says no scenario was reviewed.",
-              "type": "boolean"
-            },
-            "adversary": {
-              "description": "The Adversary, a model of another family, attacks the plan at the plan gate and the finished change at the final gate. Off: no Adversary and no plan gate; the final gate still holds the engine's own findings, and the Contract Reviewer's where review is on.",
-              "type": "boolean"
-            },
-            "exhibits": {
-              "description": "Each slice promises an exhibit its proof run writes, something a person who was not in the session can look at, and the description links them. Off: no promise and no Exhibits section.",
-              "type": "boolean"
-            },
-            "lessons": {
-              "description": "At settle, what the run taught lands in one commit in the repository's lesson homes. Off: no lessons commit.",
-              "type": "boolean"
-            }
-          }
-        },
-        "models": {
-          "description": "A model per role, over the harness's settings.",
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "broad": { "description": "Red, Green and the Builder on a broad slice.", "type": "string" },
-            "contained": { "description": "Red, Green and the Builder on a contained slice.", "type": "string" },
-            "reviewer": { "description": "The Mutant, the Reviewers and the Contract Reviewer.", "type": "string" },
-            "adversary-fallback": { "description": "The Claude subagent that stands in for the Adversary.", "type": "string" }
-          }
-        },
-        "adversary": {
-          "description": "The Adversary, over the harness's settings.",
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "model": { "description": "The model, an OpenRouter id.", "type": "string" },
-            "zeroDataRetention": { "description": "Whether its requests may reach only zero-data-retention endpoints; on unless false.", "type": "boolean" }
-          }
-        }
-      }
+      "description": "Options Blueprint passes through untouched. This harness ignores them: its practices, models and Adversary are the routine's environment's.",
+      "type": "object"
     }
   }
 }

@@ -1,9 +1,10 @@
 # Configuration
 
 The foreman reads two files at the root of the item's repository, as the commit it admits a run on
-holds them, and the fire's options. Both files are protected: no step of a run may change them, so
-the code cannot teach its judge. A run pins what it read at admission and holds every later load to
-it.
+holds them, and the routine's environment. The files say what the repository is: its install, suites
+and extractor. The environment says what the agent does: its practices, models and Adversary. Both
+files are protected: no step of a run may change them, so the code cannot teach its judge. A run pins
+what it read at admission and holds every later load to it.
 
 ## `.blueprint-foreman.json`
 
@@ -16,8 +17,8 @@ The harness's own settings.
 | `emits` | yes | the node types the extractor can produce, as the design's artifacts name them. A design row of another type, and every edge touching one, goes by name to the final gate's Contract Reviewer instead of convergence. |
 | `protect` | yes, may be empty | the extractor's own paths, relative to the root, a directory covering everything under it; no step may change them |
 | `lessonHomes` | no | where a lesson may land at settle, the paths that exist when the run starts; default `["CLAUDE.md", ".claude/rules"]`. Prose a reader weighs: hooks and settings run, so they change only through a slice. |
-| `models` | no | a model per role: `broad` and `contained` (Red, Green and the Builder on a broad or contained slice), `reviewer` (the Mutant, the Reviewers, the Contract Reviewer), `adversary-fallback` (the Claude subagent standing in for the Adversary) |
-| `adversary` | no | `{ model, zeroDataRetention }`: the Adversary's OpenRouter model, and whether its requests may reach only zero-data-retention endpoints, `true` unless set `false` |
+
+Any other field is ignored, `models` and `adversary` among them: those are the environment's now.
 
 A suite is `{ command, report, all?, cwd?, env?, timeout? }`:
 
@@ -58,8 +59,7 @@ An example:
     }
   },
   "emits": ["aggregate", "command", "event", "read-model", "policy"],
-  "protect": ["tools/extractor"],
-  "adversary": { "model": "openai/gpt-6-astra" }
+  "protect": ["tools/extractor"]
 }
 ```
 
@@ -83,16 +83,34 @@ label with camel-case humps and every run of other characters turned into one hy
 and `Greeter Aggregate` by its own id alone. A row whose id does not end in its label's slug has no code
 id.
 
-## The fire's options
+## The routine's environment
 
-The fire's `options` are the harness's own, set per agent in Blueprint and passed through untouched.
-A run takes them at admission and keeps them; a later fire's are ignored.
+Every variable that steers the agent is set on the routine's environment, read at admission and
+pinned with the run: a later fire's environment changes nothing, and a gate recorded where the
+Adversary's route differs from the pinned one is refused. A value the engine cannot read fails the
+fire, naming the variable.
 
-| Option | Sets |
-| - | - |
-| `practices` | each practice `true` or `false`; one not named is on. See [how it works](how-it-works.md#practices). |
-| `models` | a model per role, over the settings' |
-| `adversary` | the Adversary's `model` and `zeroDataRetention`, over the settings' |
+| Variable | Sets | Unset |
+| - | - | - |
+| `BLUEPRINT_FOREMAN_PRACTICES` | the practices the run holds, named and separated by commas or spaces, or `all`: `slices`, `red-green`, `mutant`, `review`, `adversary`, `exhibits`, `lessons`. See [how it works](how-it-works.md#practices) and how they [depend on one another](how-it-works.md#how-practices-depend-on-one-another). | none: the foundation alone |
+| `BLUEPRINT_FOREMAN_MODEL_BROAD` | Red, Green and the Builder on a broad slice | the strongest Claude model |
+| `BLUEPRINT_FOREMAN_MODEL_CONTAINED` | Red, Green and the Builder on a contained slice | the faster Claude model |
+| `BLUEPRINT_FOREMAN_MODEL_REVIEWER` | the Mutant, the Reviewers, the Contract Reviewer | the strongest Claude model |
+| `BLUEPRINT_FOREMAN_MODEL_ADVERSARY_FALLBACK` | the Claude subagent standing in for the Adversary | the strongest Claude model |
+| `BLUEPRINT_FOREMAN_ADVERSARY_MODEL` | the Adversary's OpenRouter model | the strongest GPT model |
+| `BLUEPRINT_FOREMAN_ADVERSARY_ZDR` | `true` or `false`: whether the Adversary's requests may reach only zero-data-retention endpoints | `true` |
+| `OPENROUTER_API_KEY` | sends the Adversary to OpenRouter; never printed or logged | a Claude subagent stands in |
 
-`payload.schema.json` describes the whole fire; the engine validates every fire against it with its
-own code.
+Every practice on, for a routine that runs them all:
+
+    BLUEPRINT_FOREMAN_PRACTICES=all
+
+A first run with a little more than the foundation:
+
+    BLUEPRINT_FOREMAN_PRACTICES=slices,review
+
+## The fire
+
+The fire is Specification v1's JSON. Its `options` Blueprint passes through untouched, and this
+harness ignores them, whatever they hold. `payload.schema.json` describes the whole fire; the engine
+validates every fire against it with its own code.

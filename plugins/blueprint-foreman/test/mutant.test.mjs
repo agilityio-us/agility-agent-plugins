@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
-import { KEY, TEST_FILE, SLICE, FAREWELL, FAREWELL_CODE, MUTANTS, RED_STUB, GREEN_CODE, fixture, ok, refused, walk, restore, REVIEW, exhibit } from './fixture.mjs';
+import { KEY, TEST_FILE, SLICE, FAREWELL, FAREWELL_CODE, MUTANTS, RED_STUB, GREEN_CODE, briefed, fixture, ok, refused, walk, restore, REVIEW, exhibit } from './fixture.mjs';
 
 // A mutant that changes nothing observable survives any test.
 const NO_OP = { file: 'src/greet.mjs', find: 'return', replace: 'return /* mutant */' };
@@ -42,7 +42,7 @@ test('a surviving mutant brings a second from a fresh dispatch, and a killed sec
   await walk(f, 'mutant');
   const first = await recordMutant(f, NO_OP);
   assert.equal(first.code, 0, first.text);
-  assert.match(first.text, /step: mutant[\s\S]*The mutant "return" became "return \/\* mutant \*\/" in src\/greet\.mjs survived the tests[\s\S]*fresh Mutant subagent[^\n]*none of the run's Red, Green or Mutant subagents, the one that named the first mutant among them[\s\S]*Tell it another dispatch named "return" became "return \/\* mutant \*\/" in src\/greet\.mjs: it must name another edit/);
+  assert.match(briefed(f, first.text), /step: mutant[\s\S]*The mutant "return" became "return \/\* mutant \*\/" in src\/greet\.mjs survived the tests[\s\S]*fresh Mutant subagent[^\n]*none of the run's Red, Green or Mutant subagents, the one that named the first mutant among them[\s\S]*Another dispatch named "return" became "return \/\* mutant \*\/" in src\/greet\.mjs: name another edit/);
   assert.equal(f.runState().slice.budget, 3);
   exhibit('mutant-reroll', `$ engine record ${KEY} mutant agent-mutant\n${first.text}`);
   // The second comes from none of the run's authors, the first Mutant among them, and is another edit.
@@ -52,7 +52,7 @@ test('a surviving mutant brings a second from a fresh dispatch, and a killed sec
   refused(await recordMutant(f, NO_OP, 'agent-mutant-2'), /the second mutant must be another edit than the first, "return" became "return \/\* mutant \*\/" in src\/greet\.mjs/);
   // A second that cannot be judged sends the Mutant back, as a first does.
   const broke = refused(await recordMutant(f, { file: 'src/greet.mjs', find: 'return', replace: 'return return' }, 'agent-mutant-2'), /broke the build rather than the behaviour/);
-  assert.match(broke, /step: mutant[\s\S]*survived the tests[\s\S]*did not count: it must compile/);
+  assert.match(briefed(f, broke), /step: mutant[\s\S]*survived the tests[\s\S]*did not count: yours must compile/);
   const killed = await recordMutant(f, MUTANTS['greet-by-name'], 'agent-mutant-3');
   assert.equal(killed.code, 0, killed.text);
   assert.match(killed.text, /step: group-review/);
@@ -80,7 +80,7 @@ test('a mutant that breaks the build is named again without spending an attempt'
   const f = fixture();
   await walk(f, 'mutant');
   const text = refused(await recordMutant(f, { file: 'src/greet.mjs', find: 'return', replace: 'return return' }), /the mutant \("return" became "return return" in src\/greet\.mjs\) broke the build rather than the behaviour/);
-  assert.match(text, /step: mutant[\s\S]*did not count: it must compile/);
+  assert.match(briefed(f, text), /step: mutant[\s\S]*did not count: yours must compile/);
   assert.doesNotMatch(text, /survived the tests/, 'a mutant that broke the build is no survivor');
   assert.equal(f.runState().slice.budget, 3);
   await walk(f, 'group-review');

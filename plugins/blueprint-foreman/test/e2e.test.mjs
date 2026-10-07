@@ -38,7 +38,7 @@ test("end to end: from the fire's JSON to the done signal, every command the eng
   // environment, so the Adversary is a Claude subagent.
   let input = PAYLOAD;
   const engine = (...argv) => {
-    const out = spawnSync(process.execPath, [ENGINE, ...argv], { cwd: root, encoding: 'utf8', input: argv[0] === 'wake' ? input : undefined, env: { ...process.env, OPENROUTER_API_KEY: '' } });
+    const out = spawnSync(process.execPath, [ENGINE, ...argv], { cwd: root, encoding: 'utf8', input: argv[0] === 'wake' ? input : undefined, env: { ...process.env, OPENROUTER_API_KEY: '', BLUEPRINT_FOREMAN_PRACTICES: 'all' } });
     transcript.push(`$ engine ${argv.join(' ')}\n${out.stdout}`);
     return { code: out.status, text: out.stdout.trimEnd() };
   };

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { LOCK_RULE } from '../lib/locks.mjs';
 import { acceptDispositions, checkFindings, diffHunks, groupDiff, groupText, logLine, readLog, settleDispositions } from '../lib/review.mjs';
-import { KEY, BRANCH, DESIGN, FILLED, GREEN_CODE, SCAFFOLDED, fixture, ok, refused, walk, restore, scratchDir, REVIEW, exhibit, GREETING, GREET_ROW, proposes } from './fixture.mjs';
+import { KEY, BRANCH, DESIGN, FILLED, GREEN_CODE, SCAFFOLDED, briefed, fixture, ok, refused, walk, restore, scratchDir, REVIEW, exhibit, GREETING, GREET_ROW, proposes } from './fixture.mjs';
 
 // The first cycle's final gate, round 1.
 const FINAL = `docs/prs/${KEY}/foreman/gates/final-c1-r1`;
@@ -135,7 +135,7 @@ test('a calibration line is key=value, each value one word however it was writte
 test("the groups are the engine's, and their findings are kept as the groups are recorded, whatever the files say after", async () => {
   const f = fixture();
   // Each Reviewer is told the slice's criteria and where the admitted design is.
-  const brief = await walk(f, 'group-review');
+  const brief = briefed(f, await walk(f, 'group-review'));
   assert.ok(brief.includes(`the slice's criteria, greets-by-name, in the design as the run\nadmitted it (git show ${f.runState().startCommit}:docs/prs/PROJ-1/blueprint.md)`), brief);
   // Emptying the session's copy of the groups skips no Reviewer.
   f.write(`${REVIEW}/groups.json`, '[]');
@@ -164,7 +164,7 @@ test('a failing contract verdict spends an attempt, and what it found is carried
   f.write('src/greet.mjs', GREEN_CODE.replace('Hello, ', 'Yo, '));
   f.commit('green that fails', ['src/greet.mjs']);
   restore(f, refused(await f.engine('record', KEY, 'green', 'agent-green'), /"greet names the person" fails/));
-  assert.match(await walk(f, 'contract-review'), /What the slice's failed reviews found is carried into this one[\s\S]*\n {2}- src\/greet\.mjs:2: no comma \(attempt 1, contract\)\n/);
+  assert.match(briefed(f, await walk(f, 'contract-review')), /What the slice's failed reviews found is carried into this one[\s\S]*\n {2}- src\/greet\.mjs:2: no comma \(attempt 1, contract\)\n/);
   // A verdict that passes leaves it among the slice's findings, refuted with evidence or handed off.
   await walk(f, 'slice-dispositions');
   const passed = `docs/prs/${KEY}/foreman/review/greet-by-name-3`;
@@ -176,7 +176,7 @@ test('a failing contract verdict spends an attempt, and what it found is carried
 test("the contract review judges the exhibit, and a verdict from one of the run's authors is refused", async () => {
   const f = fixture();
   await walk(f, 'contract-review');
-  assert.match(await ok(f, 'wake'), new RegExp(`its exhibit \\(${GREETING}\\) against the promise that it shows the greeting greet returns for Ada \\(output\\)`));
+  assert.match(briefed(f, await ok(f, 'wake')), new RegExp(`its exhibit \\(${GREETING}\\) against the promise that it shows the greeting greet returns for Ada \\(output\\)`));
   f.write(`${REVIEW}/contract.json`, JSON.stringify({ verdict: 'pass', reasons: [], findings: [] }));
   refused(await f.engine('record', KEY, 'contract'), /record the Contract Reviewer's agent id/);
   const mutant = f.runState().authors.find((a) => a.startsWith('agent-mutant'));
@@ -296,9 +296,9 @@ test("the engine's own findings stand: a refutation of convergence's, or of an u
 test("the slice's Contract Reviewer is handed the engine's lock, rule and lines, so it cannot hold a comment the engine does not", async () => {
   const f = fixture({ scaffold: true });
   // Green fills the gap and rewords the scaffold's comment, which in a script is not locked.
-  const brief = await walk(f, 'contract-review', { slices: [SCAFFOLDED], green: { 'src/greet.mjs': FILLED.replace('as the scaffold placed it', 'reworded by Green') } });
+  const brief = briefed(f, await walk(f, 'contract-review', { slices: [SCAFFOLDED], green: { 'src/greet.mjs': FILLED.replace('as the scaffold placed it', 'reworded by Green') } }));
   assert.ok(brief.includes(`The locks are the engine's, which held this change to them before review: ${LOCK_RULE}`), brief);
-  assert.ok(brief.includes(`${REVIEW}/locked.json, and a line not there is not locked. It raises no lock break of its own.`), brief);
+  assert.ok(brief.includes(`${REVIEW}/locked.json, and a line not there is not locked. Raise no lock break of your own.`), brief);
   // The scaffold's code lines are locked; its comment and its gap are not.
   assert.deepEqual(JSON.parse(f.read(`${REVIEW}/locked.json`)), { rule: LOCK_RULE, scaffold: ['src/greet.mjs:2', 'src/greet.mjs:4'] });
   assert.match(LOCK_RULE, /In a script a comment is never locked\./);

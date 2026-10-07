@@ -11,8 +11,8 @@ Each term once. Roles are capitalized (Red, Green, Builder); steps and states ar
 | **Specification v1** | the contract between Blueprint and the agent that delivers an item: the fire, the branches, the design, the scaffold, the signal and the description |
 | **foreman** | blueprint-foreman, the harness a session follows to deliver one design; it builds nothing itself, but dispatches a subagent for every role and holds their work to the design |
 | **item** | the work item a design delivers, known by its **key**, as `PROJ-1` |
-| **fire** | Steward starting a routine with the fire's JSON: the key, B, F, the design, the signal's key, an answer and the harness's options |
-| **routine** | the saved Claude Code prompt and environment a fire starts |
+| **fire** | Steward starting a routine with the fire's JSON: the key, B, F, the design, the signal's key and an answer; its options this harness ignores |
+| **routine** | the saved Claude Code prompt and environment a fire starts; its **environment** sets the practices, the models and the Adversary |
 | **session** | the Claude Code conversation a fire starts, which follows the skill |
 | **B** | Blueprint's branch for the item, `<KEY>-<slug>`, which Steward writes |
 | **F** | the agent's branch, `claude/<B>`, cut from B's tip at the first fire and continued at every later one, B's moves merged in |
@@ -42,9 +42,9 @@ Each term once. Roles are capitalized (Red, Green, Builder); steps and states ar
 | **run directory** | `<docsRoot>/<KEY>/foreman/`: the run state and everything the run writes, the only place it writes outside the code change but the description |
 | **run state** | `run.json` in the run directory, which only the engine writes, held at every load to F and to every run-state commit before it; the **engine's copy** lives in the checkout's git directory |
 | **run-state commit** | a commit of the run directory alone, at settle with the description, ending in the harness's trailers, `Foreman-Cycle`, `Foreman-Stop` at a stop and `Foreman-Run`, and the signal last |
-| **practice** | a stage the fire's options may turn off, each on unless they do and pinned at admission: `slices`, `red-green`, `mutant`, `review`, `adversary`, `exhibits`, `lessons` |
-| **foundation** | what every run holds, whatever its practices: admission, every record's bounds and the locks, the replays, the final run, attempts and the budget, stops, answers and cycles, and settle with the description |
-| **stop** | the run waiting, signalled `needs-human`, on a **need** the commit's subject asks |
+| **practice** | a stage the routine's environment may turn on, each off unless it does and pinned at admission: `slices`, `red-green`, `mutant`, `review`, `adversary`, `exhibits`, `lessons` |
+| **foundation** | what every run holds, whatever its practices: admission, every record's bounds and the locks, the replays, the final run, attempts and the budget, replans, stops, answers and cycles, and settle with the description |
+| **stop** | the run waiting, signalled `needs-human`, on a **need** the commit's subject asks: information the run cannot get or an effect it may not perform, or every replan spent |
 | **answer** | a person's reply to a stop, which the next fire carries; the run quotes it from its run state for the rest of the cycle |
 | **reject** | the session's record that only a new design or scaffold puts the run right, citing scenario ids, artifacts or locked scaffold lines, each of which must exist |
 
@@ -53,7 +53,7 @@ Each term once. Roles are capitalized (Red, Green, Builder); steps and states ar
 | Term | Meaning |
 | - | - |
 | **step** | what the run waits on the session for; each takes evidence |
-| **brief** | what a step tells a subagent, carrying every answer given in the cycle |
+| **brief** | what a step tells a subagent, written by the engine to the run directory's `briefs/` and passed on whole, carrying every answer given in the cycle |
 | **record** | the command by which the session hands the engine a step's evidence |
 | **bounds** | what a step may change: the commit it counts from, the paths, and whether something must change |
 | **accepted** | the commit whose code the engine last accepted, from which a step's bounds count unless it names another |
@@ -64,7 +64,8 @@ Each term once. Roles are capitalized (Red, Green, Builder); steps and states ar
 | **stub** | a product file Red may create with signatures only, so the tests fail on an assertion |
 | **substitute** | for a slice with no red, the **broken state** its tests must fail on instead |
 | **exhibit** | what a person who was not in the session looks at to see a slice's work: a recording, else a screenshot, else the system's own output, never a harness's verdict |
-| **budget**, **attempt** | a slice has a budget of attempts; each failed try spends one |
+| **budget**, **attempt** | a slice has a budget of attempts; each failed try spends one, and a slice that spends them all goes to the replan |
+| **replan** | the session's rewrite of the slices that have not landed, from any step of a slice, the slice in flight dropped and its code restored; each cycle has a budget of replans |
 | **Red**, **Green** | the subagents that write a slice's failing tests, and then the code that passes them |
 | **Builder** | with red-green off, the subagent that writes a slice's code and its tests together |
 | **Mutant** | the subagent, told not to read the tests, that names one small edit the tests must fail on; a first that survives brings the **reroll** |

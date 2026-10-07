@@ -15,7 +15,7 @@ import { ENGINE } from './config.mjs';
 import { LOCK_RULE, lockedLines } from './locks.mjs';
 import { sliceOf } from './plan.mjs';
 import { authorRefusal, noAuthor, ownPaths, readRunJson, runDirectory, runFile } from './run.mjs';
-import { attemptDir, spend } from './slice.mjs';
+import { attemptDir, sliceBrief, spend } from './slice.mjs';
 
 const GROUP_LIMIT = 150;
 const DISPOSITIONS = ['fixed', 'refuted', 'widens', 'handed-off'];
@@ -265,14 +265,22 @@ export const REVIEW_STEPS = {
       fs.writeFileSync(attemptFile(ctx.root, run, 'groups.json'), `${JSON.stringify(index, null, 2)}\n`);
       for (const g of groups) fs.writeFileSync(attemptFile(ctx.root, run, `group-${g.id}.diff`), groupText(g));
       const at = `${runDirectory(run)}/${attemptDir(run)}`;
+      const slice = sliceOf(run);
+      const briefs = groups.map((g) =>
+        sliceBrief(ctx, run, `reviewer-${g.id}`, [
+          `# Reviewer: ${slice.id} (${run.key}), attempt ${run.slice.attempt}, group ${g.id} of ${groups.length}`,
+          '',
+          `Read ${at}/group-${g.id}.diff${g.oversize ? ', one hunk over the limit of 150 changed lines, which you review all the same' : ''}, and report only`,
+          `findings that affect correctness or the slice's criteria, ${slice.criteria.join(', ')}, in the design as the run`,
+          `admitted it (git show ${run.startCommit}:${run.design}), never style, citing file and line.`,
+          BAR,
+          'You propose findings only: edit nothing but your findings file, and never approve.',
+          `Write your findings, possibly empty, to ${at}/group-${g.id}.findings.json as ${FINDINGS_FORM}.`,
+        ]),
+      );
       return [
-        `The slice's change splits into ${groups.length} group(s) of at most 150 changed lines (${at}/groups.json).`,
-        `${ctx.models.dispatch('reviewer')} for each group n, which reads ${at}/group-n.diff and reports only`,
-        `findings that affect correctness or the slice's criteria, ${sliceOf(run).criteria.join(', ')}, in the design as the run`,
-        `admitted it (git show ${run.startCommit}:${run.design}), never style, citing file and line.`,
-        'Reviewers propose findings only: they edit nothing but their findings file, and never approve.',
-        `Write each group's findings, possibly empty, to ${at}/group-n.findings.json as ${FINDINGS_FORM}.`,
-        ...groups.filter((g) => g.oversize).map((g) => `Group ${g.id} is one hunk over the limit (oversize); review it all the same.`),
+        `The slice's change splits into ${groups.length} group(s) of at most 150 changed lines (${at}/groups.json). For each:`,
+        ...briefs.map((brief) => `  ${ctx.models.dispatch('reviewer', brief)}`),
       ];
     },
     record: (run) => `${ENGINE} record ${run.key} groups`,
@@ -303,25 +311,27 @@ export const REVIEW_STEPS = {
       // The locks are the engine's: it hands the reviewer the lines they hold, so the two cannot disagree.
       fs.writeFileSync(attemptFile(ctx.root, run, 'locked.json'), `${JSON.stringify(lockedLines(ctx, run, run.slice.greenCommit), null, 2)}
 `);
-      return [
-        `${ctx.models.dispatch('contract')}, ${noAuthor(run)}, to judge slice`,
-        `"${slice.id}" against criteria ${slice.criteria.join(', ')} in the design as the run admitted it (git show ${run.startCommit}:${run.design})${exhibit}`,
-        `It reads the engine's replay evidence (${at}/replay.json, whose findings join the slice's), the group findings`,
-        `(${at}/group-*.findings.json), the diff (${run.slice.base}..${run.slice.greenCommit}) and the slice's scope, and never runs the replays itself.`,
+      const brief = sliceBrief(ctx, run, 'contract', [
+        `# Contract Reviewer: ${slice.id} (${run.key}), attempt ${run.slice.attempt}`,
+        '',
+        `Judge slice "${slice.id}" against criteria ${slice.criteria.join(', ')} in the design as the run admitted it (git show ${run.startCommit}:${run.design})${exhibit}`,
+        `Read the engine's replay evidence (${at}/replay.json, whose findings join the slice's), the group findings`,
+        `(${at}/group-*.findings.json), the diff (${run.slice.base}..${run.slice.greenCommit}) and the slice's scope, and never run the replays yourself.`,
         BAR,
-        "It fails the slice only for a scenario of its criteria the change does not meet, or a defect the change brings into what it touches; for anything else it passes, with the finding.",
-        `The locks are the engine's, which held this change to them before review: ${LOCK_RULE} The scaffold's locked lines at this green are in ${at}/locked.json, and a line not there is not locked. It raises no lock break of its own.`,
+        "Fail the slice only for a scenario of its criteria the change does not meet, or a defect the change brings into what it touches; for anything else pass it, with the finding.",
+        `The locks are the engine's, which held this change to them before review: ${LOCK_RULE} The scaffold's locked lines at this green are in ${at}/locked.json, and a line not there is not locked. Raise no lock break of your own.`,
         ...(carried.length
           ? [
-              "What the slice's failed reviews found is carried into this one: it joins the slice's findings, so the Contract",
-              'Reviewer weighs each again in its verdict, and does not raise it again:',
+              "What the slice's failed reviews found is carried into this one: it joins the slice's findings, so weigh",
+              'each again in your verdict, and do not raise it again:',
               ...carried.map((f) => `  - ${f.file}:${f.line}: ${f.claim} (attempt ${f.attempt}, ${f.source})`),
             ]
           : []),
-        `It writes ${at}/contract.json:`,
+        `Write ${at}/contract.json:`,
         `  { "verdict": "pass" | "fail", "reasons": ["..."], "findings": ${FINDINGS_FORM} }`,
-        "It edits nothing but contract.json. Record its verdict with the Contract Reviewer's agent id.",
-      ];
+        'Edit nothing but contract.json.',
+      ]);
+      return [`${ctx.models.dispatch('contract', brief)}, ${noAuthor(run)}.`, "Then record its verdict with the Contract Reviewer's agent id."];
     },
     record: (run) => `${ENGINE} record ${run.key} contract <the Contract Reviewer's agent id>`,
     accept(run, ctx, agentId) {
@@ -343,7 +353,7 @@ export const REVIEW_STEPS = {
       if (contract.verdict === 'fail') {
         // What the failed review found is judged again by the next attempt's, never dropped unhanded.
         const carried = findings.map((f) => ({ attempt: run.slice.attempt, ...f }));
-        return { ...spend(run, [`the Contract Reviewer failed the slice: ${(contract.reasons ?? []).join('; ') || 'no reason given'}`], 'green', { carried }), log };
+        return { ...spend(ctx, run, [`the Contract Reviewer failed the slice: ${(contract.reasons ?? []).join('; ') || 'no reason given'}`], 'green', { carried }), log };
       }
       // The run state keeps the findings its dispositions settle; findings.json is the session's copy.
       return { ...(findings.length ? { next: 'slice-dispositions', extra: { slice: { ...run.slice, findings } } } : { onward: 'land' }), log };
