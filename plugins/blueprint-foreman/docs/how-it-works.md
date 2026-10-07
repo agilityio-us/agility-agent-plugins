@@ -258,7 +258,8 @@ verdict on every scenario and on every row convergence hands on; an unmet verdic
 
 The engine's own run of the code at HEAD, in one scratch checkout, before the final gate opens. It
 extracts the graph there and holds to it each artifact the extractor can show: a proposed node or edge
-and a rename's new id must be there, a removed one and a rename's old id gone, and the node a
+and a rename's new id must be there (a proposed node by its own id, or by its code id under the
+repository's type words, see [the configuration](config.md#blueprintconfigjson)), a removed one and a rename's old id gone, and the node a
 non-renaming modify names still there. It holds the locks, finds the gaps still open, runs every
 landed slice's tests again, writing every promised exhibit again, and runs each suite's `all` against
 what it passed at the admitted commit. Each thing that does not hold is a finding of the engine's,

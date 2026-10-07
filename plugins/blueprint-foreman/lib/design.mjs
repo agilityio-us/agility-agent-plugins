@@ -115,7 +115,7 @@ function artifact(text) {
     if (kind === 'modify') return { node: { type: m[1], id: m[2], to: m[3] ?? null, verb: 'modify' } };
     if (kind === 'remove') return { node: { type: m[1], id: m[2], to: null, verb: 'remove' } };
     if (m[1] === 'edge' || m[1] === 'modifies' || m[1] === 'removes') return null;
-    return { node: { type: m[1], id: m[4], to: null, verb: 'propose' } };
+    return { node: { type: m[1], label: m[2], subdomain: m[3], id: m[4], to: null, verb: 'propose' } };
   }
   return null;
 }

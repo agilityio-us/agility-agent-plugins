@@ -24,6 +24,7 @@ Each term once. Roles are capitalized (Red, Green, Builder); steps and states ar
 | **gap** | a scaffold line marked `TODO(scaffold)`, the only kind an implementer replaces |
 | **lock** | every other line the scaffold added, and every line a landed slice added to its frozen files: what must survive |
 | **extractor** | the repository's command that writes the **graph**, `.blueprint/graph.json`, from the code |
+| **type word**, **code id** | the word the code names of a node type end in, which the repository may declare (`designTooling.typeWords`); a proposed node's code id is the id its code carries with the word appended, which realizes it where the graph lacks its own id ([configuration](config.md#blueprintconfigjson)) |
 | **converge** | of the code: its graph bears out every artifact the extractor can show; what ids cannot show goes by name to the final gate's Contract Reviewer, or with review off to the description as unverified |
 | **signal** | the trailer under the fire's key, default `Blueprint-Status`, that ends every commit the engine prints: `working`, `done`, `needs-human`, `rejected` or `failed` |
 | **description** | `<docsRoot>/<KEY>/pull-request.md`, which settle writes and Steward posts on the item's pull request |

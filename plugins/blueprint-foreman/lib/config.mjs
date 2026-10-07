@@ -133,6 +133,9 @@ function parsed(source, file, what) {
   }
 }
 
+// Type words: the word the code names of a node type end in, by type, `{ "aggregate": "Aggregate" }`.
+const isTypeWords = (v) => record(v) && Object.values(v).every((w) => typeof w === 'string' && /^[A-Za-z0-9]+$/.test(w));
+
 // The adapters as a commit holds them, `blueprint` the text of Blueprint's file and `foreman` the
 // harness's, each null where there is none: the fields a run reads, in their shape, and the settings a
 // fire may override, or the problems with them. Fields not named here are another tool's, and ignored.
@@ -144,6 +147,7 @@ export function checkAdapters(blueprint, foreman) {
   const own = h.value ?? {};
   if (b.value && !text(design.extract)) problems.push(`${BLUEPRINT_CONFIG}: designTooling.extract must be the shell command that writes the graph`);
   if (b.value && b.value.docsRoot !== undefined && !isRelativePath(b.value.docsRoot)) problems.push(`${BLUEPRINT_CONFIG}: docsRoot must be a repository-relative path`);
+  if (b.value && design.typeWords !== undefined && !isTypeWords(design.typeWords)) problems.push(`${BLUEPRINT_CONFIG}: designTooling.typeWords must map node types to the words their code names end in, each letters and digits`);
   if (h.value) {
     const at = `${FOREMAN_CONFIG}: `;
     if (!Array.isArray(own.emits) || own.emits.length === 0 || !own.emits.every(text)) problems.push(`${at}emits must list the node types the extractor emits, at least one`);
@@ -161,6 +165,7 @@ export function checkAdapters(blueprint, foreman) {
     adapters: {
       docsRoot: b.value.docsRoot ?? DEFAULT_DOCS_ROOT,
       extract: design.extract,
+      ...(design.typeWords !== undefined ? { typeWords: design.typeWords } : {}),
       emits: own.emits,
       protect: own.protect,
       install: own.install,

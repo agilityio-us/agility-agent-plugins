@@ -65,12 +65,23 @@ An example:
 
 ## `.blueprint.config.json`
 
-Blueprint's adapter file. The foreman reads two fields, and ignores the rest:
+Blueprint's adapter file. The foreman reads these fields, and ignores the rest:
 
 | Field | Required | Declares |
 | - | - | - |
 | `designTooling.extract` | yes | a shell command, run from the root, that writes `.blueprint/graph.json` holding at least `{ nodes: [{ id, type }], edges: [{ from, kind, to }] }`. A nonzero exit, no file or a file of another shape is a failed extraction. |
+| `designTooling.typeWords` | no | the word the code names of a node type end in, by type, each letters and digits: `{ "aggregate": "Aggregate", "policy": "Policy" }`. A design labels a node without it, so convergence also takes a proposed node, and every edge naming it, as realized by its code id, below. Without it, or for a type it does not name, only the row's own id realizes it. |
 | `docsRoot` | no | where each item's docs live, `<docsRoot>/<KEY>/`, default `docs/prs`. The fire's `design` must be `<docsRoot>/<KEY>/blueprint.md`. |
+
+A proposed node's code id, where the graph lacks its own id and the repository declares a type word
+for its type: its code is named for its label without the word it may end in (its last letters and
+digits spelling the word, case and anything between them aside), in PascalCase, with the word appended
+once, and the code id is the row's id with its label's slug replaced by that name's. A slug is the
+label with camel-case humps and every run of other characters turned into one hyphen, lowercased. So
+``- aggregate Greeter in greeting (`greeting_agg_greeter`)`` is realized by
+`greeting_agg_greeter-aggregate`, `Orders View Model` with the word `Viewmodel` by `...orders-viewmodel`,
+and `Greeter Aggregate` by its own id alone. A row whose id does not end in its label's slug has no code
+id.
 
 ## The fire's options
 

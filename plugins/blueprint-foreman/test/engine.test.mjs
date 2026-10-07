@@ -11,7 +11,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ENGINE, checkAdapters } from '../lib/config.mjs';
-import { converge, extractIn, missingBefore } from '../lib/convergence.mjs';
+import { codeId, converge, extractIn, missingBefore } from '../lib/convergence.mjs';
 import { checkDesign, criteria, criterionKeys, eventModel } from '../lib/design.mjs';
 import { createGit } from '../lib/git.mjs';
 import { checkLock, openGaps, scaffoldCommits } from '../lib/locks.mjs';
@@ -493,6 +493,7 @@ test('the adapters are checked field by field, each bad field refused, and field
     [{ ...ADAPTERS, foreman: '[]' }, /\.blueprint-foreman\.json is not a JSON object/],
     [{ ...ADAPTERS, blueprint: { designTooling: null } }, /\.blueprint\.config\.json: designTooling\.extract must be the shell command/],
     [tooling({ extract: '' }), /designTooling\.extract must be the shell command/],
+    ...[[], 'Aggregate', { aggregate: '' }, { aggregate: 'Read Model' }, { aggregate: 3 }].map((typeWords) => [tooling({ typeWords }), /designTooling\.typeWords must map node types to the words their code names end in/]),
     ...[undefined, [], ['command', 3]].map((emits) => [withForeman({ emits }), own('emits must list the node types')]),
     ...[undefined, ['../outside'], ['/abs'], ['C:/tools/extract.mjs'], [3], 'extract.mjs'].map((protect) => [withForeman({ protect }), own("protect must list the extractor's own paths")]),
     [withForeman({ install: undefined }), own('install must be')],
@@ -525,6 +526,8 @@ test('the adapters are checked field by field, each bad field refused, and field
   const { adapters, settings } = check(unit({ cwd: 'web', retries: 2 }));
   assert.deepEqual(adapters.suites, { unit: { command: 'jest {files} {report}', report: 'jest', cwd: 'web' } });
   assert.equal('scaffold' in adapters, false);
+  assert.equal('typeWords' in adapters, false, 'no type words unless declared');
+  assert.deepEqual(check(tooling({ typeWords: { aggregate: 'Aggregate' } })).adapters.typeWords, { aggregate: 'Aggregate' });
   assert.deepEqual([adapters.lessonHomes, settings], [['CLAUDE.md', '.claude/rules'], { models: {}, adversary: {} }], 'the defaults');
   const named = check(withForeman({ lessonHomes: ['AGENTS.md'], models: { broad: 'm-1' }, adversary: { model: 'v/m', zeroDataRetention: false } }));
   assert.deepEqual([named.adapters.lessonHomes, named.settings], [['AGENTS.md'], { models: { broad: 'm-1' }, adversary: { model: 'v/m', zeroDataRetention: false } }]);
@@ -772,6 +775,38 @@ test('convergence holds to the graph each row the extractor emits, and hands on 
   const touching = eventModel(DESIGN.replace('(handled-by)\n', '(handled-by)\n- edge `routing_ui_route-inspector` → `routing_rm_legacy-routes` (reads)\n'));
   const edge = { row: 'routing_ui_route-inspector → routing_rm_legacy-routes (reads)', line: line('(handled-by)') + 1, why: 'it touches routing_ui_route-inspector, of a type the extractor does not emit' };
   assert.deepEqual(converge(touching, realized, emits, file), { findings: [], handed: [UI_HANDED, { ...MODIFIED, line: MODIFIED.line + 1 }, edge] }, "the edge's line moves the modify's on");
+});
+
+test("a proposed node is realized by its code id under the repository's type words, and only those", () => {
+  const file = DESIGN_FILE;
+  const emits = ['aggregate', 'command', 'read-model'];
+  const typeWords = { aggregate: 'Aggregate', 'read-model': 'Viewmodel' };
+  const artifacts = (rows) => eventModel(`---\nkey: ${KEY}\n---\n## Artifacts\n\n${rows.join('\n')}\n`);
+  const greeter = artifacts([
+    '- aggregate Greeter in greeting (`greeting_agg_greeter`)',
+    '- edge `greeting_cmd_greet` → `greeting_agg_greeter` (handled-by)',
+  ]);
+  const built = {
+    nodes: [{ id: 'greeting_cmd_greet', type: 'command' }, { id: 'greeting_agg_greeter-aggregate', type: 'aggregate' }],
+    edges: [{ from: 'greeting_cmd_greet', kind: 'handled-by', to: 'greeting_agg_greeter-aggregate' }],
+  };
+  const claims = (model, graph, words) => converge(model, graph, emits, file, words).findings.map((f) => f.claim);
+  // A bare label is realized by the code named with its type word appended, and so is every edge naming it.
+  assert.deepEqual(claims(greeter, built, typeWords), []);
+  // Without a declaration, or with none for the type, nothing is tolerated.
+  const unmet = ['greeting_agg_greeter is not in the extracted graph, so the code does not realize this propose', 'the edge greeting_cmd_greet → greeting_agg_greeter (handled-by) is not in the extracted graph'];
+  assert.deepEqual(claims(greeter, built, undefined), unmet);
+  assert.deepEqual(claims(greeter, built, { policy: 'Policy' }), unmet);
+  // A label that already ends in its word is its own code name: its id alone realizes it.
+  const suffixed = artifacts(['- aggregate Greeter Aggregate in greeting (`greeting_agg_greeter-aggregate`)']);
+  assert.deepEqual(claims(suffixed, built, typeWords), []);
+  assert.equal(codeId(suffixed.nodes[0], typeWords), 'greeting_agg_greeter-aggregate');
+  // The code name is the label in PascalCase: a word spelled apart is the word, and a digit joins its segment.
+  assert.equal(codeId(artifacts(['- read-model Orders View Model in sales (`sales_rm_orders-view-model`)']).nodes[0], typeWords), 'sales_rm_orders-viewmodel');
+  assert.equal(codeId(artifacts(['- aggregate Order 2fa in sales (`sales_agg_order-2fa`)']).nodes[0], typeWords), 'sales_agg_order2fa-aggregate');
+  // Its own id, where the graph holds it, is what realizes the row; no other form is tried.
+  assert.deepEqual(claims(greeter, { nodes: [{ id: 'greeting_agg_greeter-aggregate', type: 'aggregate' }], edges: [] }, typeWords), ['the edge greeting_cmd_greet → greeting_agg_greeter (handled-by) is not in the extracted graph']);
+  assert.equal(codeId({ type: 'aggregate', label: 'Greeter', id: 'custom-id' }, typeWords), undefined, 'an id not ending in its label slug is never rewritten');
 });
 
 test('an extraction that writes no graph, or one of another shape, is refused with why, and a graph already there is not read', () => {
